@@ -653,6 +653,59 @@ lbox_fiber_name(struct lua_State *L)
 	}
 }
 
+/**
+ * Get or set trace_id.
+ *
+ * Without arguments returns current trace_id.
+ *
+ * With a string argument sets the new trace_id.
+ *
+ * With box.NULL argument unsets the trace_id.
+ */
+static int
+lbox_fiber_trace_id(struct lua_State *L)
+{
+	struct fiber *f = fiber();
+	int trace_id_index;
+	int top = lua_gettop(L);
+	if (lua_type(L, 1) == LUA_TUSERDATA) {
+		f = lbox_checkfiber(L, 1);
+		trace_id_index = 2;
+	} else {
+		trace_id_index = 1;
+	}
+	if (top > trace_id_index) {
+		return luaL_error(L, "Too many arguments");
+	}
+	if (top == trace_id_index) {
+		int type = lua_type(L, trace_id_index);
+		if (type == LUA_TSTRING) {
+			/* Set trace_id. */
+			size_t size;
+			const char *trace_id = lua_tolstring(L, trace_id_index,
+							     &size);
+			fiber_set_trace_id(f, trace_id, size);
+			return 0;
+		} else if (luaT_is_box_null(L, trace_id_index)) {
+			/* Unset trace_id. */
+			fiber_set_trace_id(f, NULL, 0);
+			return 0;
+		} else {
+			return luaL_error(L, "unexpected argument: %s",
+					  lua_typename(L, type));
+		}
+	} else {
+		/* Get trace_id. */
+		size_t size;
+		const char *trace_id = fiber_trace_id(f, &size);
+		if (trace_id == NULL)
+			lua_pushnil(L);
+		else
+			lua_pushlstring(L, trace_id, size);
+		return 1;
+	}
+}
+
 static int
 lbox_fiber_storage(struct lua_State *L)
 {
@@ -874,6 +927,7 @@ lbox_fiber_stall(struct lua_State *L)
 static const struct luaL_Reg lbox_fiber_meta [] = {
 	{"id", lbox_fiber_id},
 	{"name", lbox_fiber_name},
+	{"trace_id", lbox_fiber_trace_id},
 	{"cancel", lbox_fiber_cancel},
 	{"status", lbox_fiber_status},
 	{"info", lbox_fiber_object_info},
@@ -910,6 +964,7 @@ static const struct luaL_Reg fiberlib[] = {
 	{"new", lbox_fiber_new},
 	{"status", lbox_fiber_status},
 	{"name", lbox_fiber_name},
+	{"trace_id", lbox_fiber_trace_id},
 	/* Internal functions, to hide in fiber.lua. */
 	{"stall", lbox_fiber_stall},
 	{NULL, NULL}

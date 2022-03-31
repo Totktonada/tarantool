@@ -412,6 +412,12 @@ void luaL_iterator_delete(struct luaL_iterator *it);
 
 /* }}} */
 
+/**
+ * XXX
+ */
+bool
+luaT_is_box_null(struct lua_State *L, int idx);
+
 int
 tarantool_lua_utils_init(struct lua_State *L);
 

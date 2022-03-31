@@ -2099,6 +2099,10 @@ tx_process_call(struct cmsg *m)
 	int rc;
 	struct port port;
 
+	if (msg->header.trace_id)
+		fiber_set_trace_id(fiber(), msg->header.trace_id,
+				   msg->header.trace_id_size);
+
 	switch (msg->header.type) {
 	case IPROTO_CALL:
 	case IPROTO_CALL_16:

@@ -148,6 +148,10 @@ enum iproto_key {
 	/** Key name and data sent to a remote watcher. */
 	IPROTO_EVENT_KEY = 0x57,
 	IPROTO_EVENT_DATA = 0x58,
+
+	/** Additional header keys. */
+	IPROTO_TRACE_ID = 0x59,
+
 	/*
 	 * Be careful to not extend iproto_key values over 0x7f.
 	 * iproto_keys are encoded in msgpack as positive fixnum, which ends at

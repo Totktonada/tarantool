@@ -824,3 +824,13 @@ void cord_on_yield(void)
 		exit(EXIT_FAILURE);
 	}
 }
+
+bool
+luaT_is_box_null(struct lua_State *L, int idx)
+{
+	if (lua_type(L, idx) != LUA_TCDATA)
+		return false;
+	GCcdata *cd = cdataV(L->base + idx - 1);
+	return (cd->ctypeid == CTID_P_CVOID || cd->ctypeid == CTID_P_VOID) &&
+		*(void **)cdataptr(cd) == NULL;
+}

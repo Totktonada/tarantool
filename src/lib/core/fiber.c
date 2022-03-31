@@ -905,6 +905,12 @@ fiber_recycle(struct fiber *fiber)
 	fiber->name[0] = '\0';
 	fiber->f = NULL;
 	fiber->wait_pad = NULL;
+	if (fiber->trace_id != NULL) {
+		/* XXX: Keep the buffer (just set size to zero)? */
+		free(fiber->trace_id);
+		fiber->trace_id = NULL;
+		fiber->trace_id_size = 0;
+	}
 	memset(&fiber->storage, 0, sizeof(fiber->storage));
 	fiber->storage.lua.storage_ref = FIBER_LUA_NOREF;
 	fiber->storage.lua.fid_ref = FIBER_LUA_NOREF;
@@ -1320,6 +1326,8 @@ fiber_delete(struct cord *cord, struct fiber *f)
 	rlist_del(&f->link);
 	region_destroy(&f->gc);
 	fiber_stack_destroy(f, &cord->slabc);
+	if (f->trace_id != NULL)
+		free(f->trace_id);
 	diag_destroy(&f->diag);
 	if (f->name != f->inline_name)
 		free(f->name);
@@ -1869,4 +1877,30 @@ int fiber_stat(fiber_stat_cb cb, void *cb_ctx)
 			return res;
 	}
 	return 0;
+}
+
+void
+fiber_set_trace_id(struct fiber *f, const char *trace_id, size_t size)
+{
+	/* Discard the buffer if it is not needed. */
+	/* XXX: Keep the buffer (just set size to zero)? */
+	if (size == 0) {
+		if (f->trace_id != NULL)
+			free(f->trace_id);
+		f->trace_id = NULL;
+		f->trace_id_size = 0;
+		return;
+	}
+
+	/* Reallocate the buffer if needed. */
+	if (f->trace_id_size < size) {
+		if (f->trace_id != NULL)
+			free(f->trace_id);
+		f->trace_id = (char *)malloc(size);
+		if (f->trace_id == NULL)
+			panic("fiber_set_trace_id() failed with OOM");
+	}
+
+	memcpy(f->trace_id, trace_id, size);
+	f->trace_id_size = size;
 }

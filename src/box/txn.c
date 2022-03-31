@@ -106,6 +106,8 @@ txn_add_redo(struct txn *txn, struct txn_stmt *stmt, struct request *request)
 		row->lsn = 0;
 		row->sync = 0;
 		row->tm = 0;
+		row->trace_id = NULL;
+		row->trace_id_size = 0;
 		row->flags = 0;
 	}
 	/*

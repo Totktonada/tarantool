@@ -194,6 +194,12 @@ xrow_header_decode(struct xrow_header *header, const char **pos,
 		case IPROTO_STREAM_ID:
 			header->stream_id = mp_decode_uint(pos);
 			break;
+		case IPROTO_TRACE_ID: {
+			uint32_t size;
+			header->trace_id = mp_decode_str(pos, &size);
+			header->trace_id_size = size;
+			break;
+		}
 		default:
 			/* unknown header */
 			mp_next(pos);
@@ -334,6 +340,11 @@ xrow_header_encode(const struct xrow_header *header, uint64_t sync,
 	if (header->stream_id != 0) {
 		d = mp_encode_uint(d, IPROTO_STREAM_ID);
 		d = mp_encode_uint(d, header->stream_id);
+		map_size++;
+	}
+	if (header->trace_id != NULL) {
+		d = mp_encode_uint(d, IPROTO_TRACE_ID);
+		d = mp_encode_str(d, header->trace_id, header->trace_id_size);
 		map_size++;
 	}
 	if (flags_to_encode != 0) {

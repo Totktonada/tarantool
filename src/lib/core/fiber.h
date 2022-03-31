@@ -662,6 +662,9 @@ struct fiber {
 	 */
 	char *name;
 	char inline_name[FIBER_NAME_INLINE];
+	/** XXX */
+	char *trace_id;
+	size_t trace_id_size;
 };
 
 /** Invoke on_stop triggers and delete them. */
@@ -904,6 +907,18 @@ fiber_c_invoke(fiber_func f, va_list ap)
 {
 	return f(ap);
 }
+
+/** XXX */
+static inline const char *
+fiber_trace_id(struct fiber *f, size_t *size)
+{
+	*size = f->trace_id_size;
+	return f->trace_id;
+}
+
+/** XXX */
+void
+fiber_set_trace_id(struct fiber *f, const char *trace_id, size_t size);
 
 #if defined(__cplusplus)
 } /* extern "C" */

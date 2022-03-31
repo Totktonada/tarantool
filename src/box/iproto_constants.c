@@ -153,6 +153,10 @@ const unsigned char iproto_key_type[IPROTO_KEY_MAX] =
 	/* 0x57 */	MP_STR, /* IPROTO_EVENT_KEY */
 	/* 0x58 */	MP_NIL, /* IPROTO_EVENT_DATA (can be any) */
 	/* }}} */
+
+	/* {{{ header -- additional keys */
+	/* 0x59 */      MP_STR,    /* IPROTO_TRACE_ID */
+	/* }}} */
 };
 
 const char *iproto_type_strs[] =

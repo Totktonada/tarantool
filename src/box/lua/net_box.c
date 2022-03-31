@@ -568,7 +568,8 @@ netbox_transport_set_error(struct netbox_transport *transport)
 
 static inline size_t
 netbox_begin_encode(struct mpstream *stream, uint64_t sync,
-		    enum iproto_type type, uint64_t stream_id)
+		    enum iproto_type type, uint64_t stream_id,
+		    const char *trace_id, size_t trace_id_size)
 {
 	/* Remember initial size of ibuf (see netbox_end_encode()) */
 	struct ibuf *ibuf = stream->ctx;
@@ -579,8 +580,12 @@ netbox_begin_encode(struct mpstream *stream, uint64_t sync,
 	mpstream_reserve(stream, fixheader_size);
 	mpstream_advance(stream, fixheader_size);
 
+	if (trace_id == NULL)
+		trace_id = fiber_trace_id(fiber(), &trace_id_size);
+
 	/* encode header */
-	mpstream_encode_map(stream, 1 + (sync != 0) + (stream_id != 0));
+	mpstream_encode_map(stream, 1 + (sync != 0) + (stream_id != 0) +
+			    (trace_id != NULL));
 
 	if (sync != 0) {
 		mpstream_encode_uint(stream, IPROTO_SYNC);
@@ -594,6 +599,12 @@ netbox_begin_encode(struct mpstream *stream, uint64_t sync,
 		mpstream_encode_uint(stream, IPROTO_STREAM_ID);
 		mpstream_encode_uint(stream, stream_id);
 	}
+
+	if (trace_id != NULL) {
+		mpstream_encode_uint(stream, IPROTO_TRACE_ID);
+		mpstream_encode_strn(stream, trace_id, (uint32_t)trace_id_size);
+	}
+
 	/* Caller should remember how many bytes was used in ibuf */
 	return used;
 }
@@ -626,11 +637,13 @@ netbox_end_encode(struct mpstream *stream, size_t initial_size)
 
 static void
 netbox_encode_ping(lua_State *L, int idx, struct mpstream *stream,
-		   uint64_t sync, uint64_t stream_id)
+		   uint64_t sync, uint64_t stream_id, const char *trace_id,
+		   size_t trace_id_size)
 {
 	(void)L;
 	(void)idx;
-	size_t svp = netbox_begin_encode(stream, sync, IPROTO_PING, stream_id);
+	size_t svp = netbox_begin_encode(stream, sync, IPROTO_PING, stream_id,
+					 trace_id, trace_id_size);
 	netbox_end_encode(stream, svp);
 }
 
@@ -658,7 +671,7 @@ netbox_encode_id(struct lua_State *L, struct ibuf *ibuf, uint64_t sync)
 	struct mpstream stream;
 	mpstream_init(&stream, ibuf, ibuf_reserve_cb, ibuf_alloc_cb,
 		      luamp_error, L);
-	size_t svp = netbox_begin_encode(&stream, sync, IPROTO_ID, 0);
+	size_t svp = netbox_begin_encode(&stream, sync, IPROTO_ID, 0, NULL, 0);
 
 	mpstream_encode_map(&stream, 2);
 	mpstream_encode_uint(&stream, IPROTO_VERSION);
@@ -686,7 +699,8 @@ netbox_encode_auth(struct lua_State *L, struct ibuf *ibuf, uint64_t sync,
 	struct mpstream stream;
 	mpstream_init(&stream, ibuf, ibuf_reserve_cb, ibuf_alloc_cb,
 		      luamp_error, L);
-	size_t svp = netbox_begin_encode(&stream, sync, IPROTO_AUTH, 0);
+	size_t svp = netbox_begin_encode(&stream, sync, IPROTO_AUTH, 0, NULL,
+					 0);
 	mpstream_encode_map(&stream, 2);
 	mpstream_encode_uint(&stream, IPROTO_USER_NAME);
 	mpstream_encode_strn(&stream, user, strlen(user));
@@ -708,7 +722,8 @@ netbox_encode_select_all(struct lua_State *L, struct ibuf *ibuf, uint64_t sync,
 	struct mpstream stream;
 	mpstream_init(&stream, ibuf, ibuf_reserve_cb, ibuf_alloc_cb,
 		      luamp_error, L);
-	size_t svp = netbox_begin_encode(&stream, sync, IPROTO_SELECT, 0);
+	size_t svp = netbox_begin_encode(&stream, sync, IPROTO_SELECT, 0, NULL,
+					 0);
 	mpstream_encode_map(&stream, 3);
 	mpstream_encode_uint(&stream, IPROTO_SPACE_ID);
 	mpstream_encode_uint(&stream, space_id);
@@ -721,10 +736,13 @@ netbox_encode_select_all(struct lua_State *L, struct ibuf *ibuf, uint64_t sync,
 
 static void
 netbox_encode_call_impl(lua_State *L, int idx, struct mpstream *stream,
-			uint64_t sync, enum iproto_type type, uint64_t stream_id)
+			uint64_t sync, enum iproto_type type,
+			uint64_t stream_id, const char *trace_id,
+			size_t trace_id_size)
 {
 	/* Lua stack at idx: function_name, args */
-	size_t svp = netbox_begin_encode(stream, sync, type, stream_id);
+	size_t svp = netbox_begin_encode(stream, sync, type, stream_id,
+					 trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 2);
 
@@ -743,25 +761,30 @@ netbox_encode_call_impl(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_call_16(lua_State *L, int idx, struct mpstream *stream,
-		      uint64_t sync, uint64_t stream_id)
+		      uint64_t sync, uint64_t stream_id, const char *trace_id,
+		      size_t trace_id_size)
 {
-	netbox_encode_call_impl(L, idx, stream, sync,
-				IPROTO_CALL_16, stream_id);
+	netbox_encode_call_impl(L, idx, stream, sync, IPROTO_CALL_16, stream_id,
+				trace_id, trace_id_size);
 }
 
 static void
 netbox_encode_call(lua_State *L, int idx, struct mpstream *stream,
-		   uint64_t sync, uint64_t stream_id)
+		   uint64_t sync, uint64_t stream_id, const char *trace_id,
+		   size_t trace_id_size)
 {
-	netbox_encode_call_impl(L, idx, stream, sync, IPROTO_CALL, stream_id);
+	netbox_encode_call_impl(L, idx, stream, sync, IPROTO_CALL, stream_id,
+				trace_id, trace_id_size);
 }
 
 static void
 netbox_encode_eval(lua_State *L, int idx, struct mpstream *stream,
-		   uint64_t sync, uint64_t stream_id)
+		   uint64_t sync, uint64_t stream_id, const char *trace_id,
+		   size_t trace_id_size)
 {
 	/* Lua stack at idx: expr, args */
-	size_t svp = netbox_begin_encode(stream, sync, IPROTO_EVAL, stream_id);
+	size_t svp = netbox_begin_encode(stream, sync, IPROTO_EVAL, stream_id,
+					 trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 2);
 
@@ -780,11 +803,12 @@ netbox_encode_eval(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_select(lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
 	/* Lua stack at idx: space_id, index_id, iterator, offset, limit, key */
 	size_t svp = netbox_begin_encode(stream, sync, IPROTO_SELECT,
-					 stream_id);
+					 stream_id, trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 6);
 
@@ -824,10 +848,12 @@ netbox_encode_select(lua_State *L, int idx, struct mpstream *stream,
 static void
 netbox_encode_insert_or_replace(lua_State *L, int idx, struct mpstream *stream,
 				uint64_t sync, enum iproto_type type,
-				uint64_t stream_id)
+				uint64_t stream_id, const char *trace_id,
+				size_t trace_id_size)
 {
 	/* Lua stack at idx: space_id, tuple */
-	size_t svp = netbox_begin_encode(stream, sync, type, stream_id);
+	size_t svp = netbox_begin_encode(stream, sync, type, stream_id,
+					 trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 2);
 
@@ -845,27 +871,30 @@ netbox_encode_insert_or_replace(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_insert(lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
-	netbox_encode_insert_or_replace(L, idx, stream, sync,
-					IPROTO_INSERT, stream_id);
+	netbox_encode_insert_or_replace(L, idx, stream, sync, IPROTO_INSERT,
+					stream_id, trace_id, trace_id_size);
 }
 
 static void
 netbox_encode_replace(lua_State *L, int idx, struct mpstream *stream,
-		      uint64_t sync, uint64_t stream_id)
+		      uint64_t sync, uint64_t stream_id, const char *trace_id,
+		      size_t trace_id_size)
 {
-	netbox_encode_insert_or_replace(L, idx, stream, sync,
-					IPROTO_REPLACE, stream_id);
+	netbox_encode_insert_or_replace(L, idx, stream, sync, IPROTO_REPLACE,
+					stream_id, trace_id, trace_id_size);
 }
 
 static void
 netbox_encode_delete(lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
 	/* Lua stack at idx: space_id, index_id, key */
 	size_t svp = netbox_begin_encode(stream, sync, IPROTO_DELETE,
-					 stream_id);
+					 stream_id, trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 3);
 
@@ -888,11 +917,12 @@ netbox_encode_delete(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_update(lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
 	/* Lua stack at idx: space_id, index_id, key, ops */
 	size_t svp = netbox_begin_encode(stream, sync, IPROTO_UPDATE,
-					 stream_id);
+					 stream_id, trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 5);
 
@@ -923,11 +953,12 @@ netbox_encode_update(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_upsert(lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
 	/* Lua stack at idx: space_id, tuple, ops */
 	size_t svp = netbox_begin_encode(stream, sync, IPROTO_UPSERT,
-					 stream_id);
+					 stream_id, trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 4);
 
@@ -1128,11 +1159,12 @@ netbox_transport_send_and_recv(struct netbox_transport *transport,
 
 static void
 netbox_encode_execute(lua_State *L, int idx, struct mpstream *stream,
-		      uint64_t sync, uint64_t stream_id)
+		      uint64_t sync, uint64_t stream_id, const char *trace_id,
+		      size_t trace_id_size)
 {
 	/* Lua stack at idx: query, parameters, options */
 	size_t svp = netbox_begin_encode(stream, sync, IPROTO_EXECUTE,
-					 stream_id);
+					 stream_id, trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 3);
 
@@ -1158,11 +1190,12 @@ netbox_encode_execute(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_prepare(lua_State *L, int idx, struct mpstream *stream,
-		      uint64_t sync, uint64_t stream_id)
+		      uint64_t sync, uint64_t stream_id, const char *trace_id,
+		      size_t trace_id_size)
 {
 	/* Lua stack at idx: query */
 	size_t svp = netbox_begin_encode(stream, sync, IPROTO_PREPARE,
-					 stream_id);
+					 stream_id, trace_id, trace_id_size);
 
 	mpstream_encode_map(stream, 1);
 
@@ -1182,29 +1215,35 @@ netbox_encode_prepare(lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_unprepare(lua_State *L, int idx, struct mpstream *stream,
-			uint64_t sync, uint64_t stream_id)
+			uint64_t sync, uint64_t stream_id, const char *trace_id,
+			size_t trace_id_size)
 {
 	/* Lua stack at idx: query, parameters, options */
-	netbox_encode_prepare(L, idx, stream, sync, stream_id);
+	netbox_encode_prepare(L, idx, stream, sync, stream_id, trace_id,
+			      trace_id_size);
 }
 
 static inline void
 netbox_encode_commit_or_rollback(lua_State *L, enum iproto_type type, int idx,
 				 struct mpstream *stream, uint64_t sync,
-				 uint64_t stream_id)
+				 uint64_t stream_id, const char *trace_id,
+				 size_t trace_id_size)
 {
 	(void)L;
 	(void) idx;
 	assert(type == IPROTO_COMMIT || type == IPROTO_ROLLBACK);
-	size_t svp = netbox_begin_encode(stream, sync, type, stream_id);
+	size_t svp = netbox_begin_encode(stream, sync, type, stream_id,
+					 trace_id, trace_id_size);
 	netbox_end_encode(stream, svp);
 }
 
 static void
 netbox_encode_begin(struct lua_State *L, int idx, struct mpstream *stream,
-		    uint64_t sync, uint64_t stream_id)
+		    uint64_t sync, uint64_t stream_id, const char *trace_id,
+		    size_t trace_id_size)
 {
-	size_t svp = netbox_begin_encode(stream, sync, IPROTO_BEGIN, stream_id);
+	size_t svp = netbox_begin_encode(stream, sync, IPROTO_BEGIN, stream_id,
+					 trace_id, trace_id_size);
 	if (!lua_isnoneornil(L, idx)) {
 		assert(lua_type(L, idx) == LUA_TNUMBER);
 		double timeout = lua_tonumber(L, idx);
@@ -1217,27 +1256,34 @@ netbox_encode_begin(struct lua_State *L, int idx, struct mpstream *stream,
 
 static void
 netbox_encode_commit(struct lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
 	return netbox_encode_commit_or_rollback(L, IPROTO_COMMIT, idx, stream,
-						sync, stream_id);
+						sync, stream_id, trace_id,
+						trace_id_size);
 }
 
 static void
 netbox_encode_rollback(struct lua_State *L, int idx, struct mpstream *stream,
-		       uint64_t sync, uint64_t stream_id)
+		       uint64_t sync, uint64_t stream_id, const char *trace_id,
+		       size_t trace_id_size)
 {
 	return netbox_encode_commit_or_rollback(L, IPROTO_ROLLBACK, idx, stream,
-						sync, stream_id);
+						sync, stream_id, trace_id,
+						trace_id_size);
 }
 
 static void
 netbox_encode_inject(struct lua_State *L, int idx, struct mpstream *stream,
-		     uint64_t sync, uint64_t stream_id)
+		     uint64_t sync, uint64_t stream_id, const char *trace_id,
+		     size_t trace_id_size)
 {
 	/* Lua stack at idx: bytes */
 	(void)sync;
 	(void)stream_id;
+	(void)trace_id;
+	(void)trace_id_size;
 	size_t len;
 	const char *data = lua_tolstring(L, idx, &len);
 	mpstream_memcpy(stream, data, len);
@@ -1251,11 +1297,14 @@ netbox_encode_inject(struct lua_State *L, int idx, struct mpstream *stream,
  */
 static int
 netbox_encode_method(struct lua_State *L, int idx, enum netbox_method method,
-		     struct ibuf *ibuf, uint64_t sync, uint64_t stream_id)
+		     struct ibuf *ibuf, uint64_t sync, uint64_t stream_id,
+		     const char *trace_id, size_t trace_id_size)
 {
 	typedef void (*method_encoder_f)(struct lua_State *L, int idx,
 					 struct mpstream *stream,
-					 uint64_t sync, uint64_t stream_id);
+					 uint64_t sync, uint64_t stream_id,
+					 const char *trace_id,
+					 size_t trace_id_size);
 	static method_encoder_f method_encoder[] = {
 		[NETBOX_PING]		= netbox_encode_ping,
 		[NETBOX_CALL_16]	= netbox_encode_call_16,
@@ -1282,7 +1331,8 @@ netbox_encode_method(struct lua_State *L, int idx, enum netbox_method method,
 	struct mpstream stream;
 	mpstream_init(&stream, ibuf, ibuf_reserve_cb, ibuf_alloc_cb,
 		      luamp_error, L);
-	method_encoder[method](L, idx, &stream, sync, stream_id);
+	method_encoder[method](L, idx, &stream, sync, stream_id, trace_id,
+			       trace_id_size);
 	return 0;
 }
 
@@ -2064,6 +2114,7 @@ luaT_netbox_new_transport(struct lua_State *L)
  *  - on_push_ctx: on_push trigger function argument
  *  - format: tuple format to use for decoding the body or nil
  *  - stream_id: determines whether or not the request belongs to stream
+ *  - trace_id: XXX
  *  - method: a value from the netbox_method enumeration
  *  - ...: method-specific arguments passed to the encoder
  *
@@ -2101,10 +2152,12 @@ luaT_netbox_transport_make_request(struct lua_State *L, int idx,
 	int arg = idx + 6;
 	uint64_t sync = transport->next_sync++;
 	uint64_t stream_id = luaL_touint64(L, arg++);
+	size_t trace_id_size;
+	const char *trace_id = lua_tolstring(L, arg++, &trace_id_size);
 	enum netbox_method method = lua_tointeger(L, arg++);
 	assert(method < netbox_method_MAX);
 	netbox_encode_method(L, arg++, method, &transport->send_buf, sync,
-			     stream_id);
+			     stream_id, trace_id, trace_id_size);
 	transport->inprogress_request_count++;
 
 	/* Initialize and register the request object. */
@@ -2196,7 +2249,7 @@ luaT_netbox_transport_watch_or_unwatch(struct lua_State *L,
 	struct mpstream stream;
 	mpstream_init(&stream, &transport->send_buf, ibuf_reserve_cb,
 		      ibuf_alloc_cb, luamp_error, L);
-	size_t svp = netbox_begin_encode(&stream, 0, type, 0);
+	size_t svp = netbox_begin_encode(&stream, 0, type, 0, NULL, 0);
 	mpstream_encode_map(&stream, 1);
 	mpstream_encode_uint(&stream, IPROTO_EVENT_KEY);
 	mpstream_encode_strn(&stream, key, key_len);

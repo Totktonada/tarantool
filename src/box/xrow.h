@@ -88,6 +88,10 @@ struct xrow_header {
 	 * Zero if stream is not used.
 	 */
 	uint64_t stream_id;
+	/** XXX */
+	const char *trace_id;
+	/** XXX */
+	size_t trace_id_size;
 	/** Transaction meta flags set only in the last transaction row. */
 	union {
 		uint8_t flags;
