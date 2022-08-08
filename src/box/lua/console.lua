@@ -50,7 +50,41 @@ local output_handlers = { }
 -- puts it inside of a stream.
 local output_eos = { ["yaml"] = '\n...\n', ["lua"] = ';' }
 
-output_handlers["yaml"] = function(status, _opts, ...)
+local function colorize(ph, str)
+    ph:write(str)
+    local res = {}
+    while true do
+        local chunk, err = ph:read({timeout = 0.1})
+        -- XXX: Check that the error is of box.error.TIMEOUT type.
+        if chunk == nil then
+            break
+        end
+        table.insert(res, chunk)
+    end
+    return table.concat(res)
+end
+
+local function colorizer(f)
+    local popen = require('popen')
+    local ph, err = popen.new({'/usr/bin/pygmentize', '-s', '-l', 'yaml'}, {
+        stdin = popen.opts.PIPE,
+        stdout = popen.opts.PIPE,
+        stderr = popen.opts.DEVNULL,
+    })
+    if ph == nil then
+        log.warn(("console.colorizer: can't start pygmentize: %s"):format(
+            tostring(err)))
+        return function(...)
+            return ...
+        end
+    end
+    return function(...)
+        local res = f(...)
+        return colorize(ph, res)
+    end
+end
+
+output_handlers["yaml"] = colorizer(function(status, _opts, ...)
     local err, ok, res
      -- Using pcall, because serializer can raise an exception
     if status then
@@ -69,7 +103,7 @@ output_handlers["yaml"] = function(status, _opts, ...)
         err = m:format(tostring(res))
         return internal.format_yaml({ error = err })
     end
-end
+end)
 
 --
 -- Format a Lua value.
