@@ -1,3 +1,19 @@
 #!/bin/sh
 
-sed -n '/^\/\*\* \\cond public \*\/$/,/^\/\*\* \\endcond public \*\/$/P'
+for header in "$@"; do
+    case "${header}" in
+        */lua/*)
+            module_name="lua_$(basename "${header}" .h)"
+            ;;
+        *)
+            module_name="$(basename "${header}" .h)"
+            ;;
+    esac
+    printf '\n'
+    printf '/** \\defgroup %s %s\n * %s\n *  @{\n */\n' "${module_name}" "${module_name}" "${module_name}"
+    printf '\n'
+    cat "${header}" | sed -n '/^\/\*\* \\cond public \*\/$/,/^\/\*\* \\endcond public \*\/$/P' | grep -v 'cond public'
+    printf '\n'
+    printf '/** @}*/\n'
+    printf '\n'
+done

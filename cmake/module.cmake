@@ -21,7 +21,7 @@ function(rebuild_module_api)
     endif()
     add_custom_command(OUTPUT ${dstfile}
         COMMAND cat ${CMAKE_CURRENT_SOURCE_DIR}/module_header.h > ${tmpfile}
-        COMMAND cat ${headers} | ${PROJECT_SOURCE_DIR}/extra/apigen >> ${tmpfile}
+        COMMAND ${PROJECT_SOURCE_DIR}/extra/apigen ${headers} >> ${tmpfile}
         COMMAND ${CMAKE_C_COMPILER}
             ${cflags}
             -I ${PROJECT_SOURCE_DIR}/src -I ${PROJECT_BINARY_DIR}/src
