@@ -1,0 +1,320 @@
+#!/usr/bin/env tarantool
+
+local fun = require('fun')
+local json = require('json')
+local yaml = require('yaml')
+local fio = require('fio')
+local http_client = require('http.client').new()
+local popen = require('popen')
+
+local this_file = fio.abspath(debug.getinfo(1).source:match("@?(.*)"))
+local this_dir = fio.dirname(this_file)
+local repository_dir = fio.dirname(this_dir)
+
+local FILE_SIZE_MAX = 10^5
+local POPEN_READ_TIMEOUT = 1
+
+-- {{{ General purpose helpers
+
+-- Transform a path relative to the repository root to an absolute
+-- path.
+local function repository_path(path)
+    return fio.pathjoin(repository_dir, path)
+end
+
+-- Verify that given path holds an existing file.
+-- Raise an appropriate error otherwise.
+local function check_file(path, msg)
+    if not fio.path.exists(path) then
+        error(msg:format(path) .. ': No such file')
+    end
+    if not fio.path.is_file(path) then
+        error(msg:format(path) .. ': Not a file')
+    end
+end
+
+-- Generate a new token on the 'Personal access token' GitHub
+-- page:
+--
+-- https://github.com/settings/tokens
+--
+-- Choose the `repo:public_repo` scope. Write the token to
+-- `tools/github_token.txt`.
+local function github_token()
+    local token = rawget(_G, 'GITHUB_TOKEN')
+    if token ~= nil then
+        return token
+    end
+
+    local path = repository_path('tools/github_token.txt')
+    check_file(path, 'Cannot read GitHub token from %q')
+
+    local fh = fio.open(path, {'O_RDONLY'})
+    local token = fh:read(FILE_SIZE_MAX):strip()
+    fh:close()
+
+    rawset(_G, 'GITHUB_TOKEN', token)
+
+    return token
+end
+
+-- Returns -1, 0 or 1:
+--
+-- -1, if a < b
+-- 0, if a == b
+-- 1, if a > b
+local function version_comparator(a, b)
+    assert(#a == #b)
+    for i = 1, #a do
+        local an = tonumber(a[i])
+        local bn = tonumber(b[i])
+        if an ~= bn then
+            return an < bn and -1 or 1
+        end
+    end
+    return 0
+end
+
+local function popen_read_line_init(ph)
+    return {ph = ph, readahead_buffer = '', eof = false}
+end
+
+local function popen_read_line(self)
+    if self.eof then
+        return ''
+    end
+
+    while not self.readahead_buffer:find('\n') do
+        local chunk, err = self.ph:read({timeout = POPEN_READ_TIMEOUT})
+        if chunk == nil then
+            error(err)
+        end
+        if chunk == '' then
+            self.eof = true
+            break
+        end
+        self.readahead_buffer = self.readahead_buffer .. chunk
+    end
+    if self.eof then
+        local line = self.readahead_buffer
+        self.readahead_buffer = ''
+        return line
+    end
+    local line, new_buffer = unpack(self.readahead_buffer:split('\n', 1))
+    self.readahead_buffer = new_buffer
+    return line
+
+end
+
+-- }}} General purpose helpers
+
+-- {{{ Submodule repository type
+
+local function gen_tag_comparator(repository_def)
+    assert(repository_def.type == 'submodule')
+    local tag_to_version = repository_def.tag_to_version
+    return function(a, b)
+        local av = tag_to_version(a)
+        local bv = tag_to_version(b)
+        return version_comparator(av, bv)
+    end
+end
+
+-- Returns luafun iterator, which yields tables:
+--
+-- {
+--     tag = <...>,
+--     commit = <...>,
+-- }
+local function fetch_upstream_tags(repository_def)
+    assert(repository_def.type == 'submodule')
+
+    local owner = repository_def.upstream:split('/', 1)[1]
+    local repo = repository_def.upstream:split('/', 1)[2]
+    local filter_tag = repository_def.filter_tag
+
+    -- Handles lightweight and annotated tags.
+    local query = ([[
+        {
+          repository(name: %q, owner: %q) {
+            refs(refPrefix: "refs/tags/", last: 100) {
+              nodes {
+                name
+                target {
+                  commitUrl
+                }
+              }
+            }
+          }
+        }
+    ]]):format(owner, repo)
+    local endpoint = 'https://api.github.com/graphql'
+    local response = http_client:post(endpoint, json.encode({query = query}), {
+        headers = {
+            ['User-Agent'] = 'third-party-status (tarantool dev tools)',
+            ['Authorization'] = 'bearer ' .. github_token(),
+        },
+        -- Uncomment for debugging.
+        -- verbose = true,
+    })
+    assert(response.status == 200)
+    local response_body = json.decode(response.body)
+
+    local refs = response_body.data.repository.refs.nodes
+    return fun.iter(refs)
+        :map(function(x)
+            local prefix_re = '^https://github.com/.-/.-/commit/'
+            local commit = x.target.commitUrl:gsub(prefix_re, '')
+            return {
+                tag = x.name,
+                commit = commit,
+            }
+        end)
+        :filter(function(x)
+            return (x.tag:match(filter_tag))
+        end)
+end
+
+-- Returns commit id of given repository.
+local function read_submodule_head(repository_def)
+    assert(repository_def.type == 'submodule')
+
+    local base_path = repository_path('.git/modules')
+    local path = fio.pathjoin(base_path, repository_def.path, 'HEAD')
+
+    check_file(path, "Cannot read submodule HEAD from %q")
+    local fh = fio.open(path, {'O_RDONLY'})
+    local commit = fh:read(FILE_SIZE_MAX):strip()
+    fh:close()
+    return commit
+end
+
+-- Returns a first tag reachable from HEAD.
+local function submodule_newest_tag(repository_def, tagged_commits)
+    assert(repository_def.type == 'submodule')
+
+    local path = repository_path(repository_def.path)
+    local command = ('git -C "%s" log --pretty=format:%%H'):format(path)
+    local ph = popen.shell(command, 'r')
+
+    local popen_read_line_state = popen_read_line_init(ph)
+    local found_tag
+    while true do
+        local commit = popen_read_line(popen_read_line_state)
+        if commit == '' then
+            break
+        end
+        assert(#commit == 40)
+        if tagged_commits[commit] ~= nil then
+            found_tag = tagged_commits[commit]
+            break
+        end
+    end
+
+    ph:close()
+    return found_tag
+end
+
+-- Collects upstream and local repository information.
+--
+-- Returns a table of this kind:
+--
+-- {
+--     actual = <tag>,
+--     newest = <tag>,
+-- }
+local function gen_submodule_info(repository_def)
+    assert(repository_def.type == 'submodule')
+
+    local res = {}
+
+    local compare = gen_tag_comparator(repository_def)
+
+    local newest
+    local tagged_commits = {}
+    for _, entry in fetch_upstream_tags(repository_def) do
+        if newest == nil then
+            newest = entry.tag
+        elseif compare(entry.tag, newest) > 0 then
+            newest = entry.tag
+        end
+
+        tagged_commits[entry.commit] = entry.tag
+    end
+    assert(newest ~= nil)
+    res.newest_tag = newest
+
+    if repository_def.head_on == 'upstream_tag' then
+        local head = read_submodule_head(repository_def)
+        res.actual_tag = tagged_commits[head]
+    elseif repository_def.head_on == 'local_changes' then
+        res.actual_tag = submodule_newest_tag(repository_def, tagged_commits)
+    else
+        assert(false)
+    end
+
+    return res
+end
+
+-- Returns a human readable status about necessarity to update
+-- the library.
+local function gen_submodule_resolution(repository_def)
+    assert(repository_def.type == 'submodule')
+
+    local compare = gen_tag_comparator(repository_def)
+
+    local repository_info = gen_submodule_info(repository_def)
+    local actual = repository_info.actual_tag
+    local newest = repository_info.newest_tag
+
+    if actual == nil then
+        -- XXX: Show all tags, current HEAD and so on.
+        return 'cannot determine actual tag'
+    end
+
+    if actual == newest then
+        return ('OK (on newest %s)'):format(newest)
+    elseif compare(actual, newest) < 0 then
+        return ('recommended update from %s to %s'):format(actual, newest)
+    end
+
+    assert(false)
+end
+
+-- }}} Submodule repository type
+
+local upstream_registry = {
+    ['curl'] = {
+        type = 'submodule',
+        head_on = 'upstream_tag',
+        upstream = 'curl/curl',
+        path = 'third_party/curl',
+        filter_tag = '^curl%-%d+_%d+_%d+$',
+        tag_to_version = function(tag)
+            return tag:gsub('^curl-', ''):split('_')
+        end,
+    },
+    ['c-ares'] = {
+        type = 'submodule',
+        head_on = 'local_changes',
+        upstream = 'c-ares/c-ares',
+        path = 'third_party/c-ares',
+        filter_tag = '^cares%-%d+_%d+_%d+$',
+        tag_to_version = function(tag)
+            return tag:gsub('^cares-', ''):split('_')
+        end,
+    },
+}
+
+local status = {}
+for name, upstream_def in pairs(upstream_registry) do
+    if upstream_def.type == 'submodule' then
+        status[name] = gen_submodule_resolution(upstream_def)
+    else
+        assert(false)
+    end
+end
+
+print(yaml.encode(status))
+
+-- vim: set ft=lua:

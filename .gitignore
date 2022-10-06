@@ -172,3 +172,6 @@ static-build/build
 
 # macOS files
 .DS_Store
+
+# GitHub token for tools/third-party-status.
+tools/github_token.txt
