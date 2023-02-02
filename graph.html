@@ -1,0 +1,841 @@
+<!--
+
+Based on https://github.com/vasturiano/3d-force-graph/blob/master/example/text-nodes/index.html
+
+The data is generated from tarantool sources using the following one-liner:
+
+(printf '{'; find src/lua src/box/lua -name '*.lua' | while read f; do fgrep -H 'require(' "${f}" | grep -v '\.lua: *--\|/help_en_US.lua'; done | sed -e 's@src/\(box/\)\?lua/\([^.]\+\).lua:@\2 @' -e 's@^\([^ ]\+\) .*require(["'\'']\([^"'\'']\+\)["'\'']).*@+\1 \2@' | grep '^+' | sed 's@^+@@' | sed 's/^init /tarantool /' | sort -u >data.txt; printf '"nodes": ['; cat data.txt | tr ' ' '\n' | sort -u | awk '{ print ",{\"id\": \""$1"\"}"}'; printf '], "links": ['; cat data.txt | awk '{ print ",{\"source\": \""$1"\", \"target\": \""$2"\"}" }'; printf ']}') | sed -e 's@"nodes": \[,{@"nodes": [{@' -e 's@"links": \[,{@"links": [{@' | jq > dependencies.json; rm data.txt
+-->
+<html>
+<head>
+  <style> body { margin: 0; } </style>
+
+  <script src="//unpkg.com/three"></script>
+  <script src="//unpkg.com/three-spritetext"></script>
+
+  <script src="//unpkg.com/3d-force-graph"></script>
+</head>
+
+<body>
+  <div id="3d-graph"></div>
+
+  <script>
+    const Graph = ForceGraph3D()
+      (document.getElementById('3d-graph'))
+        .graphData(
+{
+  "nodes": [
+    {
+      "id": "argparse"
+    },
+    {
+      "id": "bit"
+    },
+    {
+      "id": "box"
+    },
+    {
+      "id": "buffer"
+    },
+    {
+      "id": "clock"
+    },
+    {
+      "id": "compat"
+    },
+    {
+      "id": "console"
+    },
+    {
+      "id": "console.lib"
+    },
+    {
+      "id": "crc32.internal"
+    },
+    {
+      "id": "crypto"
+    },
+    {
+      "id": "csv"
+    },
+    {
+      "id": "datetime"
+    },
+    {
+      "id": "debug"
+    },
+    {
+      "id": "digest"
+    },
+    {
+      "id": "digest.lib"
+    },
+    {
+      "id": "env"
+    },
+    {
+      "id": "errno"
+    },
+    {
+      "id": "errno.lib"
+    },
+    {
+      "id": "error"
+    },
+    {
+      "id": "feedback_daemon"
+    },
+    {
+      "id": "ffi"
+    },
+    {
+      "id": "fiber"
+    },
+    {
+      "id": "fio"
+    },
+    {
+      "id": "fun"
+    },
+    {
+      "id": "help"
+    },
+    {
+      "id": "help.en_US"
+    },
+    {
+      "id": "httpc"
+    },
+    {
+      "id": "http.client"
+    },
+    {
+      "id": "http.client.lib"
+    },
+    {
+      "id": "iconv"
+    },
+    {
+      "id": "internal.compat"
+    },
+    {
+      "id": "internal.compat.lib"
+    },
+    {
+      "id": "internal.trigger"
+    },
+    {
+      "id": "json"
+    },
+    {
+      "id": "key_def"
+    },
+    {
+      "id": "load_cfg"
+    },
+    {
+      "id": "log"
+    },
+    {
+      "id": "log.get_callstack"
+    },
+    {
+      "id": "math"
+    },
+    {
+      "id": "merger"
+    },
+    {
+      "id": "msgpack"
+    },
+    {
+      "id": "msgpackffi"
+    },
+    {
+      "id": "net.box"
+    },
+    {
+      "id": "net_box"
+    },
+    {
+      "id": "net.box.lib"
+    },
+    {
+      "id": "os"
+    },
+    {
+      "id": "pwd"
+    },
+    {
+      "id": "schema"
+    },
+    {
+      "id": "socket"
+    },
+    {
+      "id": "socket.lib"
+    },
+    {
+      "id": "string"
+    },
+    {
+      "id": "swim"
+    },
+    {
+      "id": "swim.lib"
+    },
+    {
+      "id": "table"
+    },
+    {
+      "id": "table.clear"
+    },
+    {
+      "id": "table.new"
+    },
+    {
+      "id": "tap"
+    },
+    {
+      "id": "tarantool"
+    },
+    {
+      "id": "timezones"
+    },
+    {
+      "id": "title"
+    },
+    {
+      "id": "trigger"
+    },
+    {
+      "id": "tuple"
+    },
+    {
+      "id": "upgrade"
+    },
+    {
+      "id": "uri"
+    },
+    {
+      "id": "uri.lib"
+    },
+    {
+      "id": "utf8"
+    },
+    {
+      "id": "uuid"
+    },
+    {
+      "id": "xlog"
+    },
+    {
+      "id": "xlog.lib"
+    },
+    {
+      "id": "yaml"
+    }
+  ],
+  "links": [
+    {
+      "source": "argparse",
+      "target": "fun"
+    },
+    {
+      "source": "buffer",
+      "target": "ffi"
+    },
+    {
+      "source": "clock",
+      "target": "ffi"
+    },
+    {
+      "source": "compat",
+      "target": "internal.compat.lib"
+    },
+    {
+      "source": "compat",
+      "target": "json"
+    },
+    {
+      "source": "compat",
+      "target": "tarantool"
+    },
+    {
+      "source": "compat",
+      "target": "yaml"
+    },
+    {
+      "source": "console",
+      "target": "console"
+    },
+    {
+      "source": "console",
+      "target": "console.lib"
+    },
+    {
+      "source": "console",
+      "target": "errno"
+    },
+    {
+      "source": "console",
+      "target": "ffi"
+    },
+    {
+      "source": "console",
+      "target": "fiber"
+    },
+    {
+      "source": "console",
+      "target": "help"
+    },
+    {
+      "source": "console",
+      "target": "log"
+    },
+    {
+      "source": "console",
+      "target": "net.box"
+    },
+    {
+      "source": "console",
+      "target": "socket"
+    },
+    {
+      "source": "console",
+      "target": "uri"
+    },
+    {
+      "source": "console",
+      "target": "yaml"
+    },
+    {
+      "source": "crypto",
+      "target": "buffer"
+    },
+    {
+      "source": "crypto",
+      "target": "ffi"
+    },
+    {
+      "source": "csv",
+      "target": "ffi"
+    },
+    {
+      "source": "csv",
+      "target": "log"
+    },
+    {
+      "source": "datetime",
+      "target": "buffer"
+    },
+    {
+      "source": "datetime",
+      "target": "ffi"
+    },
+    {
+      "source": "datetime",
+      "target": "timezones"
+    },
+    {
+      "source": "debug",
+      "target": "debug"
+    },
+    {
+      "source": "digest",
+      "target": "bit"
+    },
+    {
+      "source": "digest",
+      "target": "buffer"
+    },
+    {
+      "source": "digest",
+      "target": "crc32.internal"
+    },
+    {
+      "source": "digest",
+      "target": "crypto"
+    },
+    {
+      "source": "digest",
+      "target": "digest.lib"
+    },
+    {
+      "source": "digest",
+      "target": "ffi"
+    },
+    {
+      "source": "env",
+      "target": "errno"
+    },
+    {
+      "source": "env",
+      "target": "ffi"
+    },
+    {
+      "source": "env",
+      "target": "os"
+    },
+    {
+      "source": "errno",
+      "target": "errno.lib"
+    },
+    {
+      "source": "errno",
+      "target": "ffi"
+    },
+    {
+      "source": "error",
+      "target": "ffi"
+    },
+    {
+      "source": "error",
+      "target": "msgpack"
+    },
+    {
+      "source": "feedback_daemon",
+      "target": "fiber"
+    },
+    {
+      "source": "feedback_daemon",
+      "target": "fio"
+    },
+    {
+      "source": "feedback_daemon",
+      "target": "http.client"
+    },
+    {
+      "source": "feedback_daemon",
+      "target": "json"
+    },
+    {
+      "source": "feedback_daemon",
+      "target": "log"
+    },
+    {
+      "source": "fiber",
+      "target": "ffi"
+    },
+    {
+      "source": "fiber",
+      "target": "fiber"
+    },
+    {
+      "source": "fio",
+      "target": "buffer"
+    },
+    {
+      "source": "fio",
+      "target": "errno"
+    },
+    {
+      "source": "fio",
+      "target": "ffi"
+    },
+    {
+      "source": "fio",
+      "target": "fiber"
+    },
+    {
+      "source": "fio",
+      "target": "fio"
+    },
+    {
+      "source": "help",
+      "target": "help.en_US"
+    },
+    {
+      "source": "httpc",
+      "target": "http.client.lib"
+    },
+    {
+      "source": "httpc",
+      "target": "json"
+    },
+    {
+      "source": "httpc",
+      "target": "msgpack"
+    },
+    {
+      "source": "httpc",
+      "target": "uri"
+    },
+    {
+      "source": "httpc",
+      "target": "yaml"
+    },
+    {
+      "source": "iconv",
+      "target": "buffer"
+    },
+    {
+      "source": "iconv",
+      "target": "errno"
+    },
+    {
+      "source": "iconv",
+      "target": "ffi"
+    },
+    {
+      "source": "key_def",
+      "target": "ffi"
+    },
+    {
+      "source": "key_def",
+      "target": "key_def"
+    },
+    {
+      "source": "load_cfg",
+      "target": "box"
+    },
+    {
+      "source": "load_cfg",
+      "target": "fiber"
+    },
+    {
+      "source": "load_cfg",
+      "target": "fio"
+    },
+    {
+      "source": "load_cfg",
+      "target": "json"
+    },
+    {
+      "source": "load_cfg",
+      "target": "log"
+    },
+    {
+      "source": "load_cfg",
+      "target": "math"
+    },
+    {
+      "source": "load_cfg",
+      "target": "title"
+    },
+    {
+      "source": "load_cfg",
+      "target": "uri"
+    },
+    {
+      "source": "log",
+      "target": "clock"
+    },
+    {
+      "source": "log",
+      "target": "debug"
+    },
+    {
+      "source": "log",
+      "target": "ffi"
+    },
+    {
+      "source": "log",
+      "target": "json"
+    },
+    {
+      "source": "merger",
+      "target": "ffi"
+    },
+    {
+      "source": "merger",
+      "target": "fun"
+    },
+    {
+      "source": "merger",
+      "target": "merger"
+    },
+    {
+      "source": "msgpackffi",
+      "target": "buffer"
+    },
+    {
+      "source": "msgpackffi",
+      "target": "ffi"
+    },
+    {
+      "source": "msgpackffi",
+      "target": "msgpack"
+    },
+    {
+      "source": "net_box",
+      "target": "box"
+    },
+    {
+      "source": "net_box",
+      "target": "console"
+    },
+    {
+      "source": "net_box",
+      "target": "ffi"
+    },
+    {
+      "source": "net_box",
+      "target": "fiber"
+    },
+    {
+      "source": "net_box",
+      "target": "internal.trigger"
+    },
+    {
+      "source": "net_box",
+      "target": "log"
+    },
+    {
+      "source": "net_box",
+      "target": "msgpack"
+    },
+    {
+      "source": "net_box",
+      "target": "net.box.lib"
+    },
+    {
+      "source": "net_box",
+      "target": "uri"
+    },
+    {
+      "source": "pwd",
+      "target": "errno"
+    },
+    {
+      "source": "pwd",
+      "target": "ffi"
+    },
+    {
+      "source": "schema",
+      "target": "buffer"
+    },
+    {
+      "source": "schema",
+      "target": "ffi"
+    },
+    {
+      "source": "schema",
+      "target": "fiber"
+    },
+    {
+      "source": "schema",
+      "target": "fun"
+    },
+    {
+      "source": "schema",
+      "target": "json"
+    },
+    {
+      "source": "schema",
+      "target": "log"
+    },
+    {
+      "source": "schema",
+      "target": "msgpack"
+    },
+    {
+      "source": "schema",
+      "target": "utf8"
+    },
+    {
+      "source": "socket",
+      "target": "buffer"
+    },
+    {
+      "source": "socket",
+      "target": "errno"
+    },
+    {
+      "source": "socket",
+      "target": "ffi"
+    },
+    {
+      "source": "socket",
+      "target": "fiber"
+    },
+    {
+      "source": "socket",
+      "target": "fio"
+    },
+    {
+      "source": "socket",
+      "target": "log"
+    },
+    {
+      "source": "socket",
+      "target": "socket.lib"
+    },
+    {
+      "source": "string",
+      "target": "buffer"
+    },
+    {
+      "source": "string",
+      "target": "ffi"
+    },
+    {
+      "source": "string",
+      "target": "string"
+    },
+    {
+      "source": "swim",
+      "target": "buffer"
+    },
+    {
+      "source": "swim",
+      "target": "crypto"
+    },
+    {
+      "source": "swim",
+      "target": "ffi"
+    },
+    {
+      "source": "swim",
+      "target": "fiber"
+    },
+    {
+      "source": "swim",
+      "target": "msgpack"
+    },
+    {
+      "source": "swim",
+      "target": "swim.lib"
+    },
+    {
+      "source": "swim",
+      "target": "uuid"
+    },
+    {
+      "source": "table",
+      "target": "table"
+    },
+    {
+      "source": "table",
+      "target": "table.clear"
+    },
+    {
+      "source": "table",
+      "target": "table.new"
+    },
+    {
+      "source": "tap",
+      "target": "ffi"
+    },
+    {
+      "source": "tap",
+      "target": "yaml"
+    },
+    {
+      "source": "tarantool",
+      "target": "ffi"
+    },
+    {
+      "source": "tarantool",
+      "target": "fiber"
+    },
+    {
+      "source": "tarantool",
+      "target": "fio"
+    },
+    {
+      "source": "tarantool",
+      "target": "internal.compat"
+    },
+    {
+      "source": "tarantool",
+      "target": "log"
+    },
+    {
+      "source": "tarantool",
+      "target": "log.get_callstack"
+    },
+    {
+      "source": "title",
+      "target": "ffi"
+    },
+    {
+      "source": "trigger",
+      "target": "fun"
+    },
+    {
+      "source": "tuple",
+      "target": "buffer"
+    },
+    {
+      "source": "tuple",
+      "target": "ffi"
+    },
+    {
+      "source": "tuple",
+      "target": "fun"
+    },
+    {
+      "source": "tuple",
+      "target": "msgpackffi"
+    },
+    {
+      "source": "upgrade",
+      "target": "bit"
+    },
+    {
+      "source": "upgrade",
+      "target": "ffi"
+    },
+    {
+      "source": "upgrade",
+      "target": "fio"
+    },
+    {
+      "source": "upgrade",
+      "target": "json"
+    },
+    {
+      "source": "upgrade",
+      "target": "log"
+    },
+    {
+      "source": "upgrade",
+      "target": "xlog"
+    },
+    {
+      "source": "uri",
+      "target": "buffer"
+    },
+    {
+      "source": "uri",
+      "target": "ffi"
+    },
+    {
+      "source": "uri",
+      "target": "uri.lib"
+    },
+    {
+      "source": "uuid",
+      "target": "buffer"
+    },
+    {
+      "source": "uuid",
+      "target": "ffi"
+    },
+    {
+      "source": "xlog",
+      "target": "fun"
+    },
+    {
+      "source": "xlog",
+      "target": "xlog.lib"
+    }
+  ]
+}
+        )
+        .nodeAutoColorBy('group')
+        .nodeThreeObject(node => {
+          const sprite = new SpriteText(node.id);
+          sprite.material.depthWrite = false; // make sprite background transparent
+          sprite.color = node.color;
+          sprite.textHeight = 8;
+          return sprite;
+        });
+
+    // Spread nodes a little wider
+    Graph.d3Force('charge').strength(-120);
+
+  </script>
+</body>
+</html>
