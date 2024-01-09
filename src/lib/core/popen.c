@@ -199,6 +199,12 @@ handle_new(struct popen_opts *opts)
 			continue;
 		size += strlen(opts->argv[i]) + 3;
 	}
+	/*
+	 * Book a space for '\0' when argv is a singleton array
+	 * that contains only NULL.
+	 */
+	if (size == 0)
+		size = 1;
 
 	handle = xmalloc(sizeof(*handle) + size);
 
@@ -208,16 +214,22 @@ handle_new(struct popen_opts *opts)
 	for (i = 0; i < opts->nr_argv-1; i++) {
 		if (opts->argv[i] == NULL)
 			continue;
-		bool is_multiword = strchr(opts->argv[i], ' ') != NULL;
-		if (is_multiword)
+		size_t len = strlen(opts->argv[i]);
+		/* Quote empty and multiword parameters. */
+		bool use_quotes = len == 0 ||
+			strchr(opts->argv[i], ' ') != NULL;
+		if (use_quotes)
 			*pos++ = '\'';
 		strlcpy(pos, opts->argv[i], pos_max - pos);
 		pos += strlen(opts->argv[i]);
-		if (is_multiword)
+		if (use_quotes)
 			*pos++ = '\'';
 		*pos++ = ' ';
 	}
-	pos[-1] = '\0';
+	if (pos == handle->command)
+		pos[0] = '\0';
+	else
+		pos[-1] = '\0';
 
 	handle->wstatus	= 0;
 	handle->pid	= -1;

@@ -2030,8 +2030,8 @@ usage:
  * otherwise `pid` is nil.
  *
  * `command` is a concatenation of space separated arguments
- * that were passed to execve(). Multiword arguments are quoted.
- * Quotes inside arguments are not escaped.
+ * that were passed to execve(). Empty or multiword arguments
+ * are quoted. Quotes inside arguments are not escaped.
  *
  * `opts` is a table of handle options in the format of
  * popen.new() `opts` parameter. `opts.env` is not shown here,
