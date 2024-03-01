@@ -98,6 +98,7 @@ struct lua_yaml_dumper {
 
    lua_State *outputL;
    luaL_Buffer yamlbuf;
+   int reftable_index;
 };
 
 /**
@@ -630,6 +631,20 @@ static int yaml_is_flow_mode(struct lua_yaml_dumper *dumper) {
    return 0;
 }
 
+/**
+ * Look for an unpacked value (one from a __serialize function).
+ */
+static void unpack_node(struct lua_yaml_dumper *dumper)
+{
+   lua_pushvalue(dumper->L, -1);
+   lua_gettable(dumper->L, dumper->reftable_index);
+   if (lua_isnil(dumper->L, -1)) {
+      lua_pop(dumper->L, 1);
+   } else {
+      lua_replace(dumper->L, -2);
+   }
+}
+
 static int dump_node(struct lua_yaml_dumper *dumper)
 {
    size_t len = 0;
@@ -644,6 +659,7 @@ static int dump_node(struct lua_yaml_dumper *dumper)
    bool unused;
    (void) unused;
 
+   unpack_node(dumper);
    yaml_char_t *anchor = get_yaml_anchor(dumper);
    if (anchor && !*anchor)
       return 1;
@@ -787,11 +803,17 @@ static int append_output(void *arg, unsigned char *buf, size_t len) {
 }
 
 static void find_references(struct lua_yaml_dumper *dumper) {
-   int newval = -1, type = lua_type(dumper->L, -1);
-   if (type != LUA_TTABLE)
-      return;
+   int newval = -1;
 
    lua_pushvalue(dumper->L, -1); /* push copy of table */
+   unpack_node(dumper);
+   if (lua_type(dumper->L, -1) != LUA_TTABLE) {
+      lua_pop(dumper->L, 1);
+      return;
+   }
+
+   lua_pushvalue(dumper->L, -1); /* push copy of table */
+
    lua_rawget(dumper->L, dumper->anchortable_index);
    if (lua_isnil(dumper->L, -1))
       newval = 0;
@@ -803,8 +825,10 @@ static void find_references(struct lua_yaml_dumper *dumper) {
       lua_pushboolean(dumper->L, newval);
       lua_rawset(dumper->L, dumper->anchortable_index);
    }
-   if (newval)
+   if (newval) {
+      lua_pop(dumper->L, 1);
       return;
+   }
 
    /* recursively process other table values */
    lua_pushnil(dumper->L);
@@ -813,113 +837,87 @@ static void find_references(struct lua_yaml_dumper *dumper) {
       lua_pop(dumper->L, 1);
       find_references(dumper); /* find references on key */
    }
+   lua_pop(dumper->L, 1);
 }
 
 /**
- * Replace object at `obj_index` on stack with materialized one if it
- * is found in reftable at `reftable_index` on stack.
- *
- * Return true if replace is done and false otherwise.
+ * Check, whether the object is in the reference table.
  */
 static bool
 materialize_try_reftable(lua_State *L, int obj_index, int reftable_index)
 {
-   assert(reftable_index > 0);
-   if (obj_index < 0)
-      obj_index = lua_gettop(L) + obj_index + 1;
    lua_pushvalue(L, obj_index);
    lua_gettable(L, reftable_index);
-   if (!lua_isnil(L, -1)) {
-      /* replace object with materialized one */
-      lua_replace(L, obj_index);
-      return true;
-   }
+   bool res = !lua_isnil(L, -1);
    lua_pop(L, 1);
-   return false;
+   return res;
 }
 
 /**
- * Call luaL_checkfield recursively for object and replace object on stack
- * with result. Object is at `obj_index` on stack.
- *
- * In the process remember the already seen objects in reference table and
- * check it before materializing next object. Thus the materialized table
- * keeps the reference structure of the original table. Also the reference
- * table is checked for luaL_checkfield result so that reference structure
- * brought by __serialize is kept too. Reference table is at `reftable_index`
- * on stack.
- *
- * Also tables of materialized object keep the hints of __serialize as the
- * hints affects later serialization.
+ * Call luaL_checkfield recursively for object and track the mapping from
+ * original values to the serialized ones.
  */
 static void
-materialize(struct lua_yaml_dumper *dumper, int obj_index, int reftable_index)
+materialize(struct lua_yaml_dumper *dumper)
 {
    struct luaL_field field;
    lua_State *L = dumper->L;
+   int reftable_index = dumper->reftable_index;
+   int obj_index = lua_gettop(L);
 
-   assert(reftable_index > 0);
-   if (obj_index < 0)
-      obj_index = lua_gettop(L) + obj_index + 1;
+   /*
+    * we're not interested in values that can't have the
+    * __serialize metamethod
+    */
+   if (!lua_istable(L, obj_index) &&
+       !luaL_iscdata(L, obj_index) &&
+       !lua_isuserdata(L, obj_index))
+   {
+      return;
+   }
+
+   /* check if object is already saved in reference table */
+   if (materialize_try_reftable(L, -1, reftable_index))
+      return;
 
    /* copy original object */
-   lua_pushvalue(L, obj_index);
-   /* check if object is already materialized in reference table */
-   if (materialize_try_reftable(L, -1, reftable_index))
-      goto finish;
+   lua_pushvalue(L, -1);
    /* may replace object copy with unpacked value */
    luaL_checkfield(L, dumper->cfg, -1, &field);
 
-   if (lua_type(L, -1) == LUA_TTABLE) {
-      /* check if table is already materialized in reference table */
-      if (materialize_try_reftable(L, -1, reftable_index))
-         goto finish;
-
-      /* create materialized table */
-      lua_newtable(L);
-      lua_insert(L, -2);
-      int materialized_index = lua_gettop(L) - 1;
-
-      /* save original object -> materialized table in reference table */
+   /* save original object -> unpacked table in reference table */
+   if (field.serialized) {
       lua_pushvalue(L, obj_index);
-      lua_pushvalue(L, materialized_index);
+      lua_pushvalue(L, -2);
       lua_settable(L, reftable_index);
-      /* save unpacked table -> materialized table in reference table */
-      lua_pushvalue(L, -1);
-      lua_pushvalue(L, materialized_index);
-      lua_settable(L, reftable_index);
+   }
 
+   /* check if unpacked table is already saved in reference table */
+   if (materialize_try_reftable(L, -1, reftable_index)) {
+      lua_pop(L, 1);
+      return;
+   }
+
+   /*
+    * Save unpacked table -> unpacked table in reference table.
+    *
+    * Just to don't go into the infinite recursion.
+    */
+   lua_pushvalue(L, -1);
+   lua_pushvalue(L, -1);
+   lua_settable(L, reftable_index);
+
+   if (lua_istable(L, -1)) {
       lua_pushnil(L);
       while (lua_next(L, -2)) {
-         /* copy key for iteration */
-         lua_pushvalue(L, -2);
-         lua_insert(L, -3);
-         materialize(dumper, -1, reftable_index);
-         materialize(dumper, -2, reftable_index);
-         lua_settable(L, materialized_index);
-      }
-
-      /* copy __serialize in case it is a hint like "map" etc */
-      if (luaL_getmetafield(L, -1, LUAL_SERIALIZE) == 1) {
-         /* stack: hint */
-         if (lua_isstring(L, -1)) {
-            /* metatable for materialized table */
-            lua_newtable(L); /* stack: meta, hint */
-            /* copy __serialize to new metatable */
-            lua_pushstring(L, LUAL_SERIALIZE); /* stack: __ser..., meta, hint */
-            lua_pushvalue(L, -3); /* stack: hint, "__serialize", meta, hint */
-            lua_settable(L, -3); /* stack: meta, hint */
-            lua_setmetatable(L, materialized_index); /* stack: hint */
-         }
-         /* pop hint */
+         materialize(dumper);
          lua_pop(L, 1);
+         materialize(dumper);
       }
-      /* pop unpacked, left materialized table on stack */
-      lua_pop(L, 1);
    }
-finish:
-   /* replace original table with materialized one */
-   lua_replace(L, obj_index);
+
+   /* pop the unpacked value, left the original one */
+   lua_pop(L, 1);
 }
 
 int
@@ -966,15 +964,15 @@ lua_yaml_encode(lua_State *L, struct luaL_serializer *serializer,
    lua_newtable(L);
    dumper.anchortable_index = lua_gettop(L);
    dumper.anchor_number = 0;
-   lua_pushvalue(L, 1); /* push copy of arg we're processing */
    lua_newtable(L); /* push reference table for materialize */
-   materialize(&dumper, -2, lua_gettop(L));
-   lua_pop(L, 1); /* pop reference table for materialize */
+   dumper.reftable_index = lua_gettop(L); /* save the ref table */
+   lua_pushvalue(L, 1); /* push copy of arg we're processing */
+   materialize(&dumper);
    find_references(&dumper);
    dump_document(&dumper);
    if (dumper.error)
       goto error;
-   lua_pop(L, 2); /* pop copied arg and anchor table */
+   lua_pop(L, 3); /* pop copied arg and anchor/ref tables */
 
    if (!yaml_stream_end_event_initialize(&ev) ||
        !yaml_emitter_emit(&dumper.emitter, &ev) ||

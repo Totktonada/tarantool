@@ -717,8 +717,8 @@ s.index.pk
   hint: true
   id: 0
   type: TREE
-  name: pk
   space_id: 512
+  name: pk
 ...
 s:select{}
 ---
@@ -750,8 +750,8 @@ s.index.pk
   hint: true
   id: 0
   type: TREE
-  name: pk
   space_id: 512
+  name: pk
 ...
 s.index.secondary
 ---
@@ -765,8 +765,8 @@ s.index.secondary
   hint: true
   id: 1
   type: TREE
-  name: secondary
   space_id: 512
+  name: secondary
 ...
 s.index.secondary:select{}
 ---
