@@ -233,7 +233,7 @@ g.test_module_exception_undefined_field = function()
             val = {'int32', 1}
         }),
     })
-    local msg = 'Wrong field name "res" for "test" protocol'
+    local msg = 'Wrong field name "res" for message "test"'
     local data = {res = 1}
     t.assert_error_msg_contains(msg, protocol.encode, protocol, 'test', data)
 end

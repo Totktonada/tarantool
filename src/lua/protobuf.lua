@@ -12,8 +12,13 @@ local MAX_FIELD_ID = 2^29 - 1
 local int64_t = ffi.typeof('int64_t')
 local uint64_t = ffi.typeof('uint64_t')
 
+-- Forward declarations.
+local encode_message_data
+local encode_field
+
 local scalars = {}
-local non_scalars = {}
+
+-- {{{ Constructors: message, enum, protocol
 
 -- Create a message object suitable to pass
 -- into the protobuf.protocol function.
@@ -108,8 +113,50 @@ end
 --
 -- protocol_def = {
 --     protocol.message(<message_name>, <message_def>),
---     protocol.enum(<enumc_name>, <enum_def>),
+--     protocol.enum(<enum_name>, <enum_def>),
 --     <...>
+-- }
+--
+-- Returns a table of the following structure:
+--
+-- protocol = {
+--      ['MessageName_1'] = {
+--          type = 'message',
+--          name = 'MessageName_1',
+--          field_by_name = {
+--              ['FieldName_1'] = <..field_def..>,
+--              ['FieldName_2'] = <..field_def..>,
+--              <...>
+--          },
+--          field_by_id = {
+--              [1] = <..field_def..>,
+--              [2] = <..field_def..>,
+--              <...>
+--          },
+--      },
+--      ['EnumName_1'] = {
+--          type = 'enum',
+--          name = 'EnumName_1',
+--          value_by_name = {
+--              [<string>] = <number>,
+--              [<string>] = <number>,
+--              <...>
+--          },
+--          value_by_id = {
+--              [<number>] = <string>,
+--              [<number>] = <string>,
+--              <...>
+--          },
+--      },
+--      <...>
+-- }
+--
+-- where <..field_def..> is a table of the following structure.
+--
+-- field_def = {
+--     type = 'MessageName' or 'EnumName' or 'int64' or <...>,
+--     name = <string>,
+--     id = <number>,
 -- }
 local function protocol(protocol_def)
     local return_protocol = {}
@@ -147,6 +194,8 @@ local function protocol(protocol_def)
     return setmetatable(return_protocol, protocol_mt)
 end
 
+-- }}} Constructors: message, enum, protocol
+
 local function is_number64(value)
     if type(value) == 'cdata' and (ffi.istype(int64_t, value) or
         ffi.istype(uint64_t, value)) then
@@ -169,29 +218,6 @@ local function encode_len(field_id, value)
         value)
 end
 
-local encode_field
-
-local function code_rep_packed(protocol, name, field_name, field_id, data)
-    local buf = {}
-    protocol[name]['field_by_name'][field_name]['repeated'] = false
-    for _, value in pairs(data) do
-        table.insert(buf, string.sub(encode_field(protocol, field_name,
-            name, value), 2))
-    end
-    protocol[name]['field_by_name'][field_name]['repeated'] = true
-    return encode_len(field_id, table.concat(buf))
-end
-
-local function code_rep_unpacked(protocol, name, field_name, data)
-    local buf = {}
-    protocol[name]['field_by_name'][field_name]['repeated'] = false
-    for _, value in pairs(data) do
-        table.insert(buf, encode_field(protocol, field_name, name, value))
-    end
-    protocol[name]['field_by_name'][field_name]['repeated'] = true
-    return table.concat(buf)
-end
-
 local function check_integer(field_def, value)
     if (type(value) == 'number' and math.ceil(value) ~= value) then
         error(('Input number value %f for %q is not integer'):format(
@@ -202,8 +228,8 @@ local function check_integer(field_def, value)
     end
 end
 
-local function encode_enum(value, list_of_values, field_id, field_type)
-    if type(value) ~= 'number' and list_of_values[value] == nil then
+local function encode_enum(value, id_by_value, field_id, field_type)
+    if type(value) ~= 'number' and id_by_value[value] == nil then
         error(('%q is not defined in %q enum'):format(value, field_type))
     end
     -- According to open enums semantics unknown enum values are encoded as
@@ -213,45 +239,100 @@ local function encode_enum(value, list_of_values, field_id, field_type)
         scalars['int32'].validate(field_def, value)
         return scalars['int32'].encode(field_id, value)
     else
-        return scalars['int32'].encode(field_id, list_of_values[value])
+        return scalars['int32'].encode(field_id, id_by_value[value])
     end
 end
 
-encode_field = function(protocol, field_name, name, value)
-    local field_by_name = protocol[name]['field_by_name']
-    if field_by_name[field_name] == nil and
-        field_name ~= '_unknown_fields' then
-            error(('Wrong field name %q for %q protocol'):
-                format(field_name, name))
+-- {{{ is_scalar, is_enum, is_message
+
+local function is_scalar(field_def)
+    return scalars[field_def.type] ~= nil
+end
+
+local function is_enum(protocol, field_def)
+    local enum_def = protocol[field_def.type]
+    if enum_def == nil then
+        return false
     end
-    if field_name == '_unknown_fields' then
-        return table.concat(value)
-    else
-        local field_type = field_by_name[field_name]['type']
-        local field_id = field_by_name[field_name]['id']
-        local repeated = field_by_name[field_name]['repeated']
-        local scalar_def = scalars[field_type]
-        local non_scalars_def = protocol[field_type]
-        if repeated then
-            if type(value) ~= 'table' then
-                error('For repeated fields table data are needed')
-            elseif scalar_def ~= nil and scalar_def.encode_as_packed then
-                return code_rep_packed(protocol, name, field_name,
-                    field_id, value)
-            else
-                return code_rep_unpacked(protocol, name, field_name, value)
-            end
-        elseif scalar_def ~= nil then
-            scalar_def.validate(field_by_name[field_name], value)
-            return scalar_def.encode(field_id, value)
-        elseif non_scalars_def ~= nil then
-            return non_scalars[non_scalars_def['type']].encode(protocol,
-                field_id, field_type, value)
-        else
-            assert(false)
+    return enum_def.type == 'enum'
+end
+
+local function is_message(protocol, field_def)
+    local message_def = protocol[field_def.type]
+    if message_def == nil then
+        return false
+    end
+    return message_def.type == 'message'
+end
+
+-- }}} is_scalar, is_enum, is_message
+
+-- {{{ encode_*
+
+local function encode_repeated(ctx, field_def, value)
+    if type(value) ~= 'table' then
+        error('For repeated fields table data are needed')
+    end
+
+    local encode_as_packed = false
+    if is_scalar(field_def) then
+        local scalar_def = scalars[field_def.type]
+        encode_as_packed = scalar_def.encode_as_packed
+    end
+
+    local buf = {}
+    for i = 1, table.maxn(value) do
+        local item_value = value[i]
+
+        -- Skip holes.
+        if item_value == nil then
+            goto continue
         end
+
+        local opts = {ignore_repeated = true}
+        local encoded_item = encode_field(ctx, field_def, item_value, opts)
+        if encode_as_packed then
+            -- Strip tag.
+            encoded_item = string.sub(encoded_item, 2)
+        end
+
+        table.insert(buf, encoded_item)
+
+        ::continue::
+    end
+
+    if encode_as_packed then
+        return encode_len(field_def.id, table.concat(buf))
+    else
+        return table.concat(buf)
     end
 end
+
+encode_field = function(ctx, field_def, value, opts)
+    local opts = opts or {}
+    local ignore_repeated = opts.ignore_repeated or false
+
+    if field_def.repeated and not ignore_repeated then
+        return encode_repeated(ctx, field_def, value)
+    elseif is_scalar(field_def) then
+        local scalar_def = scalars[field_def.type]
+        scalar_def.validate(field_def, value)
+        return scalar_def.encode(field_def.id, value)
+    elseif is_enum(ctx.protocol, field_def) then
+        local enum_def = ctx.protocol[field_def.type]
+        return encode_enum(value, enum_def.id_by_value, field_def.id,
+            field_def.type)
+    elseif is_message(ctx.protocol, field_def) then
+        local message_def = ctx.protocol[field_def.type]
+        local message_data = encode_message_data(ctx, message_def, value)
+        validate_length(message_data)
+        return encode_len(field_def.id, message_data)
+    else
+        assert(false)
+    end
+end
+
+-- }}} encode_*
 
 local function validate_type(field_def, value, exp_type)
     if type(exp_type) == 'table' then
@@ -296,6 +377,8 @@ local function validate_value(field_def, value, min, max)
         validate_value_error(field_def, value)
     end
 end
+
+-- {{{ Scalar type definitions
 
 scalars.float = {
     encode_as_packed = true,
@@ -593,6 +676,28 @@ scalars.bool = {
     end,
 }
 
+-- }}} Scalar type definitions
+
+-- Without tag.
+encode_message_data = function(ctx, message_def, data)
+    local buf = {}
+
+    for field_name, field_value in pairs(data) do
+        if field_name == '_unknown_fields' then
+            table.insert(buf, table.concat(field_value))
+        else
+            local field_def = message_def.field_by_name[field_name]
+            if field_def == nil then
+                error(('Wrong field name %q for message %q'):format(
+                    field_name, message_def.name))
+            end
+            table.insert(buf, encode_field(ctx, field_def, field_value))
+        end
+    end
+
+    return table.concat(buf)
+end
+
 -- Encodes the entered data in accordance with the
 -- selected protocol into binary format.
 --
@@ -604,40 +709,22 @@ scalars.bool = {
 --     <field_name> = <value>,
 --     <...>
 -- }
-
-local function encode(protocol, name, data)
-    local buf = {}
-    local message_def = protocol[name]
+local function encode(protocol, message_name, data)
+    local message_def = protocol[message_name]
     if message_def == nil then
         error(('There is no message or enum named %q in the given protocol')
-            :format(name))
+            :format(message_name))
     end
     if message_def.type ~= 'message' then
         assert(message_def.type == 'enum')
-        error(('Attempt to encode enum %q as a top level message'):format(name))
+        error(('Attempt to encode enum %q as a top level message'):format(
+            message_name))
     end
-    for field_name, value in pairs(data) do
-        table.insert(buf, encode_field(protocol, field_name, name, value))
-    end
-    return table.concat(buf)
+    local ctx = {
+        protocol = protocol,
+    }
+    return encode_message_data(ctx, message_def, data)
 end
-
--- This table contains encode functions for non scalar protobuf types
--- such as enum and message
-non_scalars.enum = {
-    encode = function(protocol, field_id, field_type, value)
-        local list_of_values = protocol[field_type]['id_by_value']
-        return encode_enum(value, list_of_values, field_id, field_type)
-    end,
-}
-
-non_scalars.message = {
-    encode = function(protocol, field_id, field_type, value)
-        local encoded_msg = encode(protocol, field_type, value)
-        validate_length(encoded_msg)
-        return encode_len(field_id, encoded_msg)
-    end,
-}
 
 protocol_mt = {
     __index = {
