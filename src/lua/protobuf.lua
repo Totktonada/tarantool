@@ -331,7 +331,7 @@ scalars.float = {
         local MAX_FLOAT = 3.4028234E+38
         local MIN_FLOAT = -3.4028234E+38
         validate_type(field_def, value, 'number')
-        validate_value(field_def, math.abs(value), MIN_FLOAT, MAX_FLOAT)
+        validate_value(field_def, value, MIN_FLOAT, MAX_FLOAT)
     end,
     encode = wireformat.encode_float,
 }
