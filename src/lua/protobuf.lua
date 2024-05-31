@@ -563,6 +563,12 @@ scalars.bool = {
 -- }}} Scalar type definitions
 
 
+local function validate_scalar(data, field_def)
+    local scalar_def = scalars[field_def.type]
+    scalar_def.validate(data, field_def)
+end
+
+
 -- {{{ Encoders
 
 local function encode_repeated(protocol, field_def, data)
@@ -598,7 +604,7 @@ local function encode_enum(value, id_by_value, field_id, field_type)
     -- numeric identifier. https://protobuf.dev/programming-guides/enum/
     if type(value) == 'number' then
         local field_def = {type = 'int32', id = field_id}
-        scalars['int32'].validate(value, field_def)
+        validate_scalar(value, field_def)
         return scalars['int32'].encode(value, field_id)
     else
         return scalars['int32'].encode(id_by_value[value], field_id)
@@ -609,8 +615,8 @@ encode_field = function(protocol, field_def, value, ignore_repeated)
     if field_def.repeated and not ignore_repeated then
         return encode_repeated(protocol, field_def, value)
     elseif is_scalar(field_def) then
+        validate_scalar(value, field_def)
         local scalar_def = scalars[field_def.type]
-        scalar_def.validate(value, field_def)
         return scalar_def.encode(value, field_def.id)
     elseif is_enum(protocol, field_def) then
         local enum_def = protocol[field_def.type]
