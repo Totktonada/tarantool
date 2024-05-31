@@ -236,7 +236,7 @@ end
 -- }}} is_scalar, is_enum, is_message
 
 
--- {{{ Validations
+-- {{{ Validation
 
 local function validate_length(value)
     local MAX_LEN = 2^32
@@ -320,7 +320,7 @@ local function validate_value(field_def, value, min, max)
     end
 end
 
--- }}} Validations
+-- }}} Validation
 
 
 -- {{{ Scalar type definitions
