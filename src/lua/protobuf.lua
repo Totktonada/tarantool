@@ -470,13 +470,7 @@ scalars.sint32 = {
         check_integer(field_def, value)
         validate_value(field_def, value, MIN_SINT32, MAX_SINT32)
     end,
-    encode = function(value, field_id)
-        if value >= 0 then
-            return wireformat.encode_uint(value, field_id)
-        elseif value < 0 then
-            return wireformat.encode_sint(value, field_id)
-        end
-    end,
+    encode = wireformat.encode_sint,
 }
 
 scalars.uint32 = {
@@ -541,13 +535,7 @@ scalars.sint64 = {
             validate_value(field_def, value, MIN_CDATA, MAX_CDATA)
         end
     end,
-    encode = function(value, field_id)
-        if value >= 0 then
-            return wireformat.encode_uint(value, field_id)
-        elseif value < 0 then
-            return wireformat.encode_sint(value, field_id)
-        end
-    end,
+    encode = wireformat.encode_sint,
 }
 
 scalars.uint64 = {

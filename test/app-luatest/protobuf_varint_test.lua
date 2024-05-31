@@ -116,7 +116,7 @@ g.test_sint32_positive = function()
         protobuf.message('test', {val = {'sint32', 1}})
     })
     local result = protocol:encode('test', {val = 1540})
-    t.assert_equals(string.hex(result), '08840c')
+    t.assert_equals(string.hex(result), '088818')
 end
 
 g.test_sint32_negative = function()
@@ -132,7 +132,7 @@ g.test_sint32_max_num = function()
         protobuf.message('test', {val = {'sint32', 1}})
     })
     local result = protocol:encode('test', {val = 2147483647})
-    t.assert_equals(string.hex(result), '08ffffffff07')
+    t.assert_equals(string.hex(result), '08feffffff0f')
 end
 
 g.test_sint32_min_num = function()
@@ -298,7 +298,7 @@ g.test_sint64_positive = function()
         protobuf.message('test', {val = {'sint64', 1}})
     })
     local result = protocol:encode('test', {val = 1540})
-    t.assert_equals(string.hex(result), '08840c')
+    t.assert_equals(string.hex(result), '088818')
 end
 
 g.test_sint64_negative = function()
@@ -315,7 +315,7 @@ g.test_sint64_max_num = function()
     })
     local data = {val = 9223372036854775807LL}
     local result = protocol:encode('test', data)
-    t.assert_equals(string.hex(result), '08ffffffffffffffff7f')
+    t.assert_equals(string.hex(result), '08feffffffffffffffff01')
 end
 
 g.test_sint64_min_num = function()
