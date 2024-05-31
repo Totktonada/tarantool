@@ -326,24 +326,24 @@ end
 -- {{{ Scalar type definitions
 
 scalars.float = {
+    accept_type = 'number',
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_FLOAT = 3.4028234E+38
         local MIN_FLOAT = -3.4028234E+38
-        validate_type(field_def, value, 'number')
         validate_value(field_def, value, MIN_FLOAT, MAX_FLOAT)
     end,
     encode = wireformat.encode_float,
 }
 
 scalars.fixed32 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_FIXED32 = 2^32 - 1
         local MIN_FIXED32 = 0
         local MIN_CDATA = 0ULL
         local MAX_CDATA = 4294967295ULL
-        validate_type(field_def, value, {'number', 'cdata'})
         validate_value(field_def, value, MIN_FIXED32, MAX_FIXED32)
         if type(value) == 'cdata' then
             if not is_number64(value) then
@@ -357,13 +357,13 @@ scalars.fixed32 = {
 }
 
 scalars.sfixed32 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_SFIXED32 = 2^31 - 1
         local MIN_SFIXED32 = -2^31
         local MIN_CDATA = -2147483648LL
         local MAX_CDATA = 2147483647LL
-        validate_type(field_def, value, {'number', 'cdata'})
         validate_value(field_def, value, MIN_SFIXED32, MAX_SFIXED32)
         if type(value) == 'cdata' then
             if not is_number64(value) then
@@ -377,24 +377,24 @@ scalars.sfixed32 = {
 }
 
 scalars.double = {
+    accept_type = 'number',
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_DOUBLE = 1.7976931348623157E+308
         local MIN_DOUBLE = -1.7976931348623157E+308
-        validate_type(field_def, value, 'number')
         validate_value(field_def, value, MIN_DOUBLE, MAX_DOUBLE)
     end,
     encode = wireformat.encode_double,
 }
 
 scalars.fixed64 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_UINT64 = 18446744073709551615
         local MIN_UINT64 = 0
         local MIN_CDATA = 0ULL
         local MAX_CDATA = 18446744073709551615ULL
-        validate_type(field_def, value, {'number', 'cdata'})
         if type(value) == 'number' then
             validate_value(field_def, value, MIN_UINT64, MAX_UINT64)
         end
@@ -410,13 +410,13 @@ scalars.fixed64 = {
 }
 
 scalars.sfixed64 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_SINT64 = 9223372036854775806
         local MIN_SINT64 = -9223372036854775807
         local MIN_CDATA = -9223372036854775807LL
         local MAX_CDATA = 9223372036854775806LL
-        validate_type(field_def, value, {'number', 'cdata'})
         if type(value) == 'number' then
             validate_value(field_def, value, MIN_SINT64, MAX_SINT64)
         end
@@ -432,9 +432,9 @@ scalars.sfixed64 = {
 }
 
 scalars.string = {
+    accept_type = 'string',
     encode_as_packed = false,
     validate = function(value, field_def)
-        validate_type(field_def, value, 'string')
         validate_length(value)
     end,
     encode = wireformat.encode_len,
@@ -443,11 +443,11 @@ scalars.string = {
 scalars.bytes = scalars.string
 
 scalars.int32 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_INT32 = 2^31 - 1
         local MIN_INT32 = -2^31
-        validate_type(field_def, value, {'number', 'cdata'})
         check_integer(field_def, value)
         validate_value(field_def, value, MIN_INT32, MAX_INT32)
     end,
@@ -455,11 +455,11 @@ scalars.int32 = {
 }
 
 scalars.sint32 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_SINT32 = 2^31 - 1
         local MIN_SINT32 = -2^31
-        validate_type(field_def, value, {'number', 'cdata'})
         check_integer(field_def, value)
         validate_value(field_def, value, MIN_SINT32, MAX_SINT32)
     end,
@@ -467,11 +467,11 @@ scalars.sint32 = {
 }
 
 scalars.uint32 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_UINT32 = 2^32 - 1
         local MIN_UINT32 = 0
-        validate_type(field_def, value, {'number', 'cdata'})
         check_integer(field_def, value)
         validate_value(field_def, value, MIN_UINT32, MAX_UINT32)
     end,
@@ -479,13 +479,13 @@ scalars.uint32 = {
 }
 
 scalars.int64 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_INT64 = 2^63 - 1
         local MIN_INT64 = -2^63
         local MIN_CDATA = -9223372036854775808LL
         local MAX_CDATA = 9223372036854775807LL
-        validate_type(field_def, value, {'number', 'cdata'})
         check_integer(field_def, value)
         if type(value) == 'number' then
             validate_value(field_def, value, MIN_INT64, MAX_INT64)
@@ -502,13 +502,13 @@ scalars.int64 = {
 }
 
 scalars.sint64 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_SINT64 = 2^63 - 1
         local MIN_SINT64 = -2^63
         local MIN_CDATA = -9223372036854775808LL
         local MAX_CDATA = 9223372036854775807LL
-        validate_type(field_def, value, {'number', 'cdata'})
         check_integer(field_def, value)
         if type(value) == 'number' then
             validate_value(field_def, value, MIN_SINT64, MAX_SINT64)
@@ -525,11 +525,11 @@ scalars.sint64 = {
 }
 
 scalars.uint64 = {
+    accept_type = {'number', 'cdata'},
     encode_as_packed = true,
     validate = function(value, field_def)
         local MAX_UINT64 = 2^64 - 1
         local MIN_UINT64 = 0
-        validate_type(field_def, value, {'number', 'cdata'})
         if type(value) == 'cdata' then
             if not is_number64(value) then
                 error(('Input cdata value %q for %q field is not integer'):
@@ -547,10 +547,8 @@ scalars.uint64 = {
 }
 
 scalars.bool = {
+    accept_type = 'boolean',
     encode_as_packed = true,
-    validate = function(value, field_def)
-        validate_type(field_def, value, 'boolean')
-    end,
     encode = function(value, field_id)
         if value then
             return wireformat.encode_uint(1, field_id)
@@ -565,7 +563,13 @@ scalars.bool = {
 
 local function validate_scalar(data, field_def)
     local scalar_def = scalars[field_def.type]
-    scalar_def.validate(data, field_def)
+
+    assert(scalar_def.accept_type ~= nil)
+    validate_type(field_def, data, scalar_def.accept_type)
+
+    if scalar_def.validate ~= nil then
+        scalar_def.validate(data, field_def)
+    end
 end
 
 
