@@ -333,9 +333,7 @@ scalars.float = {
         validate_type(field_def, value, 'number')
         validate_value(field_def, math.abs(value), MIN_FLOAT, MAX_FLOAT)
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_float(value, field_id)
-    end,
+    encode = wireformat.encode_float,
 }
 
 scalars.fixed32 = {
@@ -355,9 +353,7 @@ scalars.fixed32 = {
             validate_value(field_def, value, MIN_CDATA, MAX_CDATA)
         end
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_fixed32(value, field_id)
-    end,
+    encode = wireformat.encode_fixed32,
 }
 
 scalars.sfixed32 = {
@@ -377,9 +373,7 @@ scalars.sfixed32 = {
             validate_value(field_def, value, MIN_CDATA, MAX_CDATA)
         end
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_fixed32(value, field_id)
-    end,
+    encode = wireformat.encode_fixed32,
 }
 
 scalars.double = {
@@ -390,9 +384,7 @@ scalars.double = {
         validate_type(field_def, value, 'number')
         validate_value(field_def, value, MIN_DOUBLE, MAX_DOUBLE)
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_double(value, field_id)
-    end,
+    encode = wireformat.encode_double,
 }
 
 scalars.fixed64 = {
@@ -414,9 +406,7 @@ scalars.fixed64 = {
             validate_value(field_def, value, MIN_CDATA, MAX_CDATA)
         end
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_fixed64(value, field_id)
-    end,
+    encode = wireformat.encode_fixed64,
 }
 
 scalars.sfixed64 = {
@@ -438,9 +428,7 @@ scalars.sfixed64 = {
             validate_value(field_def, value, MIN_CDATA, MAX_CDATA)
         end
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_fixed64(value, field_id)
-    end,
+    encode = wireformat.encode_fixed64,
 }
 
 scalars.string = {
@@ -449,7 +437,7 @@ scalars.string = {
         validate_type(field_def, value, 'string')
         validate_length(value)
     end,
-    encode = wireformat.encode_len
+    encode = wireformat.encode_len,
 }
 
 scalars.bytes = scalars.string
@@ -500,9 +488,7 @@ scalars.uint32 = {
         check_integer(field_def, value)
         validate_value(field_def, value, MIN_UINT32, MAX_UINT32)
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_uint(value, field_id)
-    end,
+    encode = wireformat.encode_uint,
 }
 
 scalars.int64 = {
@@ -583,9 +569,7 @@ scalars.uint64 = {
                'uint_64'):format(field_def.name, tonumber(value)))
         end
     end,
-    encode = function(value, field_id)
-        return wireformat.encode_uint(value, field_id)
-    end,
+    encode = wireformat.encode_uint,
 }
 
 scalars.bool = {
