@@ -451,14 +451,7 @@ scalars.int32 = {
         check_integer(field_def, value)
         validate_value(field_def, value, MIN_INT32, MAX_INT32)
     end,
-    encode = function(value, field_id)
-        if value >= 0 then
-            return wireformat.encode_uint(value, field_id)
-        elseif value < 0 then
-            return wireformat.encode_uint(
-                ffi.cast('uint64_t', value), field_id)
-        end
-    end,
+    encode = wireformat.encode_uint,
 }
 
 scalars.sint32 = {
@@ -505,14 +498,7 @@ scalars.int64 = {
             validate_value(field_def, value, MIN_CDATA, MAX_CDATA)
         end
     end,
-    encode = function(value, field_id)
-        if value >= 0 then
-            return wireformat.encode_uint(value, field_id)
-        elseif value < 0 then
-            return wireformat.encode_uint(
-                ffi.cast('uint64_t', value), field_id)
-        end
-    end,
+    encode = wireformat.encode_uint,
 }
 
 scalars.sint64 = {
