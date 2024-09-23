@@ -1,58 +1,14 @@
-local fun = require('fun')
-local yaml = require('yaml')
 local t = require('luatest')
-local treegen = require('luatest.treegen')
-local server = require('luatest.server')
-local helpers = require('test.config-luatest.helpers')
+local cbuilder = require('luatest.cbuilder')
+local cluster = require('test.config-luatest.cluster')
 
-local g = helpers.group()
+local g = t.group()
 
-local base_config = {
-    credentials = {
-        roles = {
-            test = {
-                privileges = {
-                    {
-                        permissions = {},
-                        lua_call = {}
-                    },
-                }
-            },
-        },
-        users = {
-            guest = {
-                roles = {'super'},
-            },
-            alice = {
-                roles = {},
-                password = "ALICE",
-                privileges = {
-                    {
-                        permissions = {},
-                        lua_call = {}
-                    },
-                }
-            },
-        },
-    },
-    database = {
-        mode = "rw"
-    },
-    iproto = {
-        listen = {{uri = 'unix/:./{{ instance_name }}.iproto'}},
-    },
-    groups = {
-        ['group-001'] = {
-            replicasets = {
-                ['replicaset-001'] = {
-                    instances = {
-                        ['instance-001'] = {},
-                    },
-                },
-            },
-        },
-    },
-}
+g.before_all(cluster.init)
+g.after_each(cluster.drop)
+g.after_all(cluster.clean)
+
+-- {{{ Testing helpers
 
 local function access_error_msg(user, func)
     local templ = 'Execute access to function \'%s\' is denied for user \'%s\''
@@ -65,118 +21,148 @@ local function define_access_error_msg_function(server)
     end, {string.dump(access_error_msg)})
 end
 
-g.test_direct_lua_call_in_ro_mode = function(g)
-    local config = table.deepcopy(base_config)
-    local dir = treegen.prepare_directory({}, {})
-    local config_file = treegen.write_file(dir, 'config.yaml',
-                                           yaml.encode(config))
+local function define_stub_function(server, func_name)
+    server:exec(function(func_name)
+        rawset(_G, func_name, function()
+            return true
+        end)
+    end, {func_name})
+end
 
-    local opts = {config_file = config_file, chdir = dir}
-    g.server = server:new(fun.chain(opts, {alias = 'instance-001'}):tomap())
-    g.server:start()
-    g.server:stop()
-
-    config.database.mode = 'ro'
-
-    config.credentials.roles.test.privileges[1].lua_call = {'bar'}
-    config.credentials.roles.test.privileges[1].permissions = {'execute'}
-
-    config.credentials.roles.deps = {
-        privileges = {
-            {
-                permissions = {'execute'},
-                lua_call = {'box.info'},
-            }
-        },
-        roles = {'test'}
-    }
-
-    config.credentials.users.alice.roles = {'deps'}
-    config.credentials.users.alice.privileges[1].lua_call = {'foo'}
-    config.credentials.users.alice.privileges[1].permissions = {'execute'}
-
-    treegen.write_file(dir, 'config.yaml', yaml.encode(config))
-    g.server:start()
-    define_access_error_msg_function(g.server)
-    g.server:exec(function()
-        -- Starting in `ro` mode means that privileges are not written to the
-        -- base, and we cannot grant any access using box.schema.user.grant.
-
-        -- Verify that we cannot grant access using `box.schema.user.grant`.
-        local msg = 'Can\'t modify data on a read-only instance - ' ..
-            'box.cfg.read_only is true'
-        local grant = function()
-            box.schema.user.grant('alice', 'execute', 'lua_call', 'bar')
-        end
-        t.assert_error_msg_equals(msg, grant)
-
+local function define_get_connection_function(server)
+    server:exec(function()
         local netbox = require('net.box')
         local config = require('config')
-        local uri = config:instance_uri().uri
-        local con = netbox.connect(uri, {user="alice", password="ALICE"})
-        rawset(_G, 'foo', function() return true end)
-        rawset(_G, 'bar', function() return true end)
-        rawset(_G, 'baz', function() return true end)
 
-        -- Verify that user `alice` able to call functions `foo` and `bar`
-        -- and nothing else.
-        t.assert(con:call('foo'))
-        t.assert(con:call('bar'))
-        t.assert_equals(con:call('box.info'), box.info)
-
-        t.assert_error_msg_equals(_G.access_error_msg('alice', 'baz'),
-                                  function() con:call('baz') end)
+        rawset(_G, 'get_connection', function()
+            local uri = config:instance_uri().uri
+            return netbox.connect(uri, {user = 'alice', password = 'ALICE'})
+        end)
     end)
 end
 
-g.test_universe_lua_call_in_ro_mode = function(g)
-    local config = table.deepcopy(base_config)
-    local dir = treegen.prepare_directory({}, {})
-    local config_file = treegen.write_file(dir, 'config.yaml',
-                                           yaml.encode(config))
+local function new_cluster_in_ro()
+    local config = cbuilder:new()
+        :add_instance('i-001', {})
+        -- Create a user and set the password while we're in RW.
+        :set_global_option('credentials.users.alice', {
+            password = 'ALICE',
+        })
+        :config()
+    local cluster = cluster.new(g, config)
+    cluster:start()
 
-    local opts = {config_file = config_file, chdir = dir}
-    g.server = server:new(fun.chain(opts, {alias = 'instance-001'}):tomap())
-    g.server:start()
-    g.server:stop()
+    define_access_error_msg_function(cluster['i-001'])
+    define_stub_function(cluster['i-001'], 'foo')
+    define_stub_function(cluster['i-001'], 'bar')
+    define_stub_function(cluster['i-001'], 'baz')
+    define_get_connection_function(cluster['i-001'])
 
-    config.database.mode = 'ro'
+    -- We can only bootstrap the initial database in the RW mode.
+    -- Let's reload to RO after it.
+    local config = cbuilder:new(config)
+        :set_global_option('database.mode', 'ro')
+        :config()
+    cluster:reload(config)
 
-    config.credentials.roles.test.privileges[1].lua_call = {'all', 'box.info'}
-    config.credentials.roles.test.privileges[1].permissions = {'execute'}
+    -- Verify that the instance is in the RO mode.
+    cluster['i-001']:exec(function()
+        t.assert_equals(box.info.ro, true)
+    end)
 
-    config.credentials.roles.no_exec = {
-        privileges = {
-            {
-                permissions = {'read'},
-                lua_call = {'loadstring'},
-            }
-        }
+    return config, cluster
+end
+
+local function lua_call_priv(funcs)
+    return {
+        permissions = {'execute'},
+        lua_call = funcs,
     }
+end
 
-    config.credentials.users.alice.roles = {'test', 'no_exec'}
-    config.credentials.users.alice.privileges[1].lua_call = {'box.info'}
-    config.credentials.users.alice.privileges[1].permissions = {'execute'}
+local function inane_lua_call_priv(funcs)
+    return {
+        permissions = {'read'},
+        lua_call = funcs,
+    }
+end
 
-    treegen.write_file(dir, 'config.yaml', yaml.encode(config))
-    g.server:start()
-    define_access_error_msg_function(g.server)
-    g.server:exec(function()
-        local netbox = require('net.box')
-        local config = require('config')
-        local uri = config:instance_uri().uri
-        local con = netbox.connect(uri, {user="alice", password="ALICE"})
-        rawset(_G, 'foo', function() return true end)
+-- }}} Testing helpers
+
+g.test_direct_lua_call_in_ro_mode = function()
+    local config, cluster = new_cluster_in_ro()
+
+    -- Add new function privileges.
+    local config = cbuilder:new(config)
+        :set_global_option('credentials.roles.test', {
+            privileges = {lua_call_priv({'bar'})},
+        })
+        :set_global_option('credentials.roles.deps', {
+            privileges = {lua_call_priv({'box.info'})},
+            roles = {'test'},
+        })
+        :set_global_option('credentials.users.alice', {
+            privileges = {lua_call_priv({'foo'})},
+            roles = {'deps'},
+            password = 'ALICE',
+        })
+        :config()
+    cluster:reload(config)
+
+    -- Verify that the new privileges are granted.
+    cluster['i-001']:exec(function()
+        local conn = _G.get_connection()
+
+        -- Granted by user's privileges.
+        t.assert(conn:call('foo'))
+
+        -- Granted by a directly assigned role.
+        t.assert(conn:call('box.info'))
+
+        -- Granted by an indirectly assigned role.
+        t.assert(conn:call('bar'))
+
+        -- Any other function is forbidden.
+        local exp_err = _G.access_error_msg('alice', 'baz')
+        t.assert_error_msg_equals(exp_err, function()
+            conn:call('baz')
+        end)
+    end)
+end
+
+g.test_universe_lua_call_in_ro_mode = function()
+    local config, cluster = new_cluster_in_ro()
+
+    -- Add new function privileges.
+    local config = cbuilder:new(config)
+        :set_global_option('credentials.roles.test', {
+            privileges = {lua_call_priv({'all', 'box.info'})},
+        })
+        :set_global_option('credentials.roles.no_exec', {
+            privileges = {inane_lua_call_priv({'loadstring'})},
+        })
+        :set_global_option('credentials.users.alice', {
+            privileges = {lua_call_priv({'box.info'})},
+            roles = {'test', 'exec'},
+            password = 'ALICE',
+        })
+        :config()
+    cluster:reload(config)
+
+    cluster['i-001']:exec(function()
+        local conn = _G.get_connection()
 
         -- Verify that user `alice` able to call any global lua function.
-        t.assert(con:call('foo'))
+        t.assert(conn:call('foo'))
 
          -- Verify that user `alice` able to call granted built-in function.
-        t.assert_equals(con:call('box.info'), box.info())
+        t.assert(conn:call('box.info'))
 
         -- User `alice` is unable to use the loadstring function because the
         -- `no_exec` role hasn't `execute` permissions.
-        t.assert_error_msg_equals(_G.access_error_msg('alice', 'loadstring'),
-                                  function() con:call('loadstring') end)
+        local exp_err = _G.access_error_msg('alice', 'loadstring')
+        t.assert_error_msg_equals(exp_err, function()
+            conn:call('loadstring')
+        end)
     end)
 end
