@@ -1,19 +1,3 @@
--- Add all the elements of `src` array-like table to the end of
--- the `res` array-like table.
---
--- Similar to Python's <list>.extend().
-local function table_extend(res, src)
-    if src == nil then
-        return
-    end
-
-    assert(type(res) == 'table')
-    assert(type(src) == 'table')
-    for _, v in ipairs(src) do
-        table.insert(res, v)
-    end
-end
-
 -- Extract and add functions from a user or a role definition to
 -- the `{[func_name] = true, <...>}` mapping `res`.
 --
@@ -38,42 +22,32 @@ local function add_funcs(res, user_or_role_def)
     end
 end
 
--- Collect a full list of roles for the given user, including
+-- Extract and add roles for the given user to the
+-- `{[role_name] = true, <...>}` mapping `res`, including
 -- transitively assigned (when a role is assigned to a role).
-local function extract_roles(user_name, ctx)
-    local user_def = ctx.users[user_name]
-
-    local res = {}
-    local queue = {}
-    local visited = {}
-
-    table_extend(queue, user_def.roles)
-    while next(queue) ~= nil do
-        -- Take the next role from the queue.
-        local role_name = table.remove(queue, 1)
-
+local function add_roles(res, user_or_role_def, ctx)
+    for _, role_name in ipairs(user_or_role_def.roles or {}) do
         -- Detect a recursion.
-        if visited[role_name] then
+        if ctx.visited[role_name] then
             error(('Recursion detected: credentials.roles.%s depends on ' ..
                 'itself'):format(role_name), 0)
         end
-        visited[role_name] = true
 
-        -- Add the role into the resulting list.
-        table.insert(res, role_name)
+        -- Add the role into the result.
+        res[role_name] = true
 
-        -- Add the nested roles to the queue.
+        -- Add the nested roles.
         --
         -- Ignore unknown roles. For example, there is a
         -- built-in role 'super' that doesn't have to be
         -- configured.
         local role_def = ctx.roles[role_name]
         if role_def ~= nil then
-            table_extend(queue, role_def.roles)
+            ctx.visited[role_name] = true
+            add_roles(res, role_def, ctx)
+            ctx.visited[role_name] = nil
         end
     end
-
-    return res
 end
 
 -- Extract all the user's functions listed in the `lua_call`
@@ -81,7 +55,11 @@ end
 -- directly or transitively over the other roles.
 local function extract_funcs(user_name, ctx)
     local user_def = ctx.users[user_name]
-    local roles_list = extract_roles(user_name, ctx)
+
+    local roles = {}
+    ctx.visited = {}
+    add_roles(roles, user_def, ctx)
+    ctx.visited = nil
 
     -- Collect a full set of functions for the given user.
     --
@@ -91,7 +69,7 @@ local function extract_funcs(user_name, ctx)
     -- }
     local funcs = {}
     add_funcs(funcs, user_def)
-    for _, role_name in ipairs(roles_list) do
+    for role_name, _ in pairs(roles) do
         local role_def = ctx.roles[role_name]
         if role_def ~= nil then
             add_funcs(funcs, role_def)
