@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <string.h>
 
 #include "iostream.h"
 #include "sio.h"
@@ -154,6 +155,20 @@ coio_connect_timeout(const char *host, const char *service, int host_hint,
 	    strcmp(host, URI_HOST_UNIX) == 0) {
 		/* UNIX socket */
 		struct sockaddr_un un;
+		char path[108];
+		if (strlen(service) >= sizeof(un.sun_path)) {
+			char *p = strrchr(service, '/');
+			assert(p != NULL); // XXX: not guaranteed
+			char *dir = strdup(service);// XXX: free
+			dir[p - service] = '\0';
+			fprintf(stderr, "DIR: %s\n", dir);
+			char *file = p + 1;
+			int dirfd = open(dir, O_DIRECTORY | O_RDONLY); // XXX: why O_DIRECTORY?
+			// XXX: close dirfd later
+			snprintf(path, sizeof(path), "/proc/self/fd/%d/%s", dirfd, file);
+			fprintf(stderr, "PATH: %s\n", path);
+			service = path;
+		}
 		snprintf(un.sun_path, sizeof(un.sun_path), "%s", service);
 		un.sun_family = AF_UNIX;
 		fd = coio_connect_addr((struct sockaddr *)&un, sizeof(un),
