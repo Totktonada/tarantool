@@ -136,8 +136,6 @@ struct luaL_serializer {
 	int encode_invalid_as_nil;
 	/** Encode error object as MP_ERROR extension (MsgPack only). */
 	int encode_error_as_ext;
-	/** Array of keys to sort map serialization. */
-	char **encode_key_order;
 
 	/** Enables decoding NaN and Inf numbers */
 	int decode_invalid_numbers;
@@ -165,6 +163,10 @@ struct luaL_serializer {
 	 * updates down to dependent serializers.
 	 */
 	struct rlist on_update;
+	/**
+	 * Options stored in a Lua table on the Lua stack.
+	 */
+	int cfg_idx;
 };
 
 /**
@@ -186,13 +188,6 @@ void
 luaL_serializer_copy_options(struct luaL_serializer *dst,
 			     const struct luaL_serializer *src);
 
-/**
- * Free memory allocated for serializer options.
- * @param cfg Serializer configuration.
- */
-void
-luaL_serializer_free_options(struct luaL_serializer *cfg);
-
 static inline struct luaL_serializer *
 luaL_checkserializer(struct lua_State *L)
 {
@@ -204,6 +199,72 @@ static inline void
 luaL_pushserializer(struct lua_State *L)
 {
 	lua_pushvalue(L, lua_upvalueindex(1));
+}
+
+static inline void
+luaL_update_serializer_cfg(struct lua_State *L)
+{
+	/* new opts */
+	assert(lua_gettop(L) >= 1);
+	assert(lua_type(L, -1) == LUA_TTABLE);
+
+	lua_newtable(L);
+	/* new opts, dest table */
+
+	/* new opts, dest table, orig table */
+	lua_getfield(L, lua_upvalueindex(2), "cfg");
+
+	/* Copy the orig table to the dest table. */
+	lua_pushnil(L);
+	/* new opts, dest table, orig table, nil */
+	while (lua_next(L, -2) != 0) {
+		/* new opts, dest table, orig table, key, value */
+		lua_pushvalue(L, -2);
+		/* new opts, dest table, orig table, key, value, key */
+		lua_pushvalue(L, -2);
+		/* new opts, dest table, orig table, key, value, key, value */
+		lua_settable(L, -6);
+		/* new opts, dest table, orig table, key, value */
+		lua_pop(L, 1);
+		/* new opts, dest table, orig table, key */
+	}
+	/* new opts, dest table, orig table */
+	lua_pop(L, 1);
+	/* new opts, dest table */
+
+	/* Copy the new opts to the dest table. */
+	lua_pushnil(L);
+	/* new opts, dest table, nil */
+	while (lua_next(L, -3) != 0) {
+		/* new opts, dest table, key, value */
+		lua_pushvalue(L, -2);
+		/* new opts, dest table, key, value, key */
+		lua_pushvalue(L, -2);
+		/* new opts, dest table, key, value, key, value */
+		lua_settable(L, -5);
+		/* new opts, dest table, key, value */
+		lua_pop(L, 1);
+		/* new opts, dest table, key */
+	}
+	/* new opts, dest table */
+
+	lua_replace(L, -2);
+	/* dest table */
+}
+
+static inline void
+luaL_push_serializer_option(struct lua_State *L, struct luaL_serializer *cfg,
+			    const char *name)
+{
+	if (cfg->cfg_idx == 0) {
+		lua_getfield(L, lua_upvalueindex(2), "cfg");
+		lua_getfield(L, -1, name);
+		/* Drop cfg table. */
+		lua_remove(L, -2);
+	} else {
+		assert(lua_istable(L, cfg->cfg_idx));
+		lua_getfield(L, cfg->cfg_idx, name);
+	}
 }
 
 /**

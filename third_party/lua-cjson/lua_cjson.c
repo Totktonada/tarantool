@@ -442,9 +442,12 @@ static int json_encode(lua_State *l) {
         struct luaL_serializer user_cfg;
         luaL_serializer_copy_options(&user_cfg, cfg);
         luaL_serializer_parse_options(l, &user_cfg);
-        lua_pop(l, 1);
+
+        luaL_update_serializer_cfg(l);
+        lua_insert(l, -2);
+        user_cfg.cfg_idx = 1;
+
         json_append_data(l, &user_cfg, 0, &encode_buf);
-        luaL_serializer_free_options(&user_cfg);
     } else {
         json_append_data(l, cfg, 0, &encode_buf);
     }
@@ -1118,7 +1121,6 @@ static int json_decode(lua_State *l)
     if (token.type != T_END)
         json_throw_parse_error(l, &json, "the end", &token);
 
-    luaL_serializer_free_options(&user_cfg);
     strbuf_destroy(&decode_buf);
     cord_ibuf_put(ibuf);
 
