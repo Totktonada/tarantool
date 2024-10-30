@@ -96,7 +96,7 @@ end
 
 -- This method connects to all of the specified instances
 -- and returns the set of successfully connected ones.
-local function acquire_all_instances(instance_names)
+local function connect_to_candidates(instance_names)
     if next(instance_names) == nil then return {} end
 
     local delay = WATCHER_DELAY
@@ -293,9 +293,9 @@ local function filter(opts)
 
     -- Filter the remaining candidates after connecting to them.
     --
-    -- The acquire_all_instances() call returns quickly if it
+    -- The connect_to_candidates() call returns quickly if it
     -- receives empty table as an argument.
-    local connected_candidates = acquire_all_instances(static_candidates)
+    local connected_candidates = connect_to_candidates(static_candidates)
     local dynamic_candidates = {}
     for _, instance_name in pairs(connected_candidates) do
         if is_candidate_match_dynamic(instance_name, dynamic_opts) then
@@ -327,7 +327,7 @@ local function get_connection(opts)
     -- Initialize the weight of each candidate.
     local weights = {}
     if opts.mode == 'prefer_rw' or opts.mode == 'prefer_ro' then
-        candidates = acquire_all_instances(candidates)
+        candidates = connect_to_candidates(candidates)
     end
     for _, instance_name in pairs(candidates) do
         weights[instance_name] = 0
