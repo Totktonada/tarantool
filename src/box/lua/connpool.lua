@@ -214,7 +214,10 @@ local function is_candidate_match_static(names, opts)
 end
 
 local function is_mode_match(mode, instance_name)
-    if mode == nil then return true end
+    if mode == nil then
+        return true
+    end
+
     -- The instance should be alive to match its mode.
     assert(mode == 'ro' or mode == 'rw')
 
