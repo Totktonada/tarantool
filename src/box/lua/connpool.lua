@@ -78,6 +78,15 @@ local function connect(instance_name, opts)
     return conn
 end
 
+-- Run connecting to the instance, which if it is not already
+-- connected or in process of connecting.
+local function connect_in_background(instance_name)
+    pcall(connect, instance_name, {
+        wait_connected = false,
+        connect_timeout = WATCHER_TIMEOUT
+    })
+end
+
 local function is_candidate_connected(candidate)
     local conn = connections[candidate]
     return conn and conn.state == 'active' and conn:mode() ~= nil
@@ -96,7 +105,7 @@ end
 
 -- This method connects to all of the specified instances
 -- and returns the set of successfully connected ones.
-local function connect_to_candidates(candidates)
+local function connect_to_candidates(candidates, opts)
     if next(candidates) == nil then return {} end
 
     local delay = WATCHER_DELAY
@@ -117,11 +126,17 @@ local function connect_to_candidates(candidates)
             :filter(is_candidate_connected)
             :totable()
 
-        local all_checked = fun.iter(candidates)
-            :all(is_candidate_checked)
+        -- Stop condition.
+        local stop = false
+        if opts.any then
+            assert(type(opts.any) == 'function')
+            stop = fun.iter(candidates):any(opts.any)
+        else
+            stop = fun.iter(candidates):all(is_candidate_checked)
+        end
 
-        if all_checked then
-            return connected_candidates
+        if stop then
+            break
         end
 
         connection_mode_update_cond:wait(delay)
@@ -228,6 +243,21 @@ end
 
 local function is_candidate_match_dynamic(instance_name, opts)
     assert(opts ~= nil and type(opts) == 'table')
+
+    local conn = connections[instance_name]
+
+    -- No connection -> reconnect in background, exclude the candidate.
+    if conn == nil or conn.state == 'error' or conn.state == 'closed' then
+        connect_in_background(instance_name)
+        return false
+    end
+
+    -- In progress -> exclude the candidate.
+    if not (conn.state == 'active' and conn:mode() ~= nil) then
+        return false
+    end
+
+    -- Connected -> check using the provided filters.
     return is_mode_match(opts.mode, instance_name)
 end
 
@@ -240,7 +270,8 @@ local function filter(opts)
         roles = '?table',
         sharding_roles = '?table',
         mode = '?string',
-        skip_connection_check = '?boolean'
+        skip_connection_check = '?boolean',
+        _wait_mode = '?string',
     })
     opts = opts or {}
 
@@ -300,7 +331,14 @@ local function filter(opts)
     --
     -- The connect_to_candidates() call returns quickly if it
     -- receives empty table as an argument.
-    local connected_candidates = connect_to_candidates(static_candidates)
+    local connected_candidates = static_candidates
+    if opts._wait_mode ~= 'no wait' then
+        connected_candidates = connect_to_candidates(static_candidates, {
+            any = opts._wait_mode == 'any' and function(instance_name)
+                return is_candidate_match_dynamic(instance_name, dynamic_opts)
+            end or nil,
+        })
+    end
 
     -- Filter the remaining candidates after connecting to them.
     local dynamic_candidates = {}
@@ -326,16 +364,36 @@ local function get_connection(opts)
         sharding_roles = opts.sharding_roles,
         mode = mode,
     }
-    local candidates = filter(candidates_opts)
+
+    -- If the mode is not prefer_*, try to find already connected
+    -- candidates.
+    local candidates
+    if opts.mode == 'prefer_rw' or opts.mode == 'prefer_ro' then
+        candidates = filter(candidates_opts)
+    else
+        -- Try to find already connected candidates.
+        candidates_opts._wait_mode = 'no wait'
+        candidates = filter(candidates_opts)
+
+        -- Try to find at least one connected otherwise.
+        if next(candidates) == nil then
+            candidates_opts._wait_mode = 'any'
+            candidates = filter(candidates_opts)
+        end
+
+        -- Last resort: try to connect to all the candidates.
+        if next(candidates) == nil then
+            candidates_opts._wait_mode = nil
+            candidates = filter(candidates_opts)
+        end
+    end
+
     if next(candidates) == nil then
         return nil, "no candidates are available with these conditions"
     end
 
     -- Initialize the weight of each candidate.
     local weights = {}
-    if opts.mode == 'prefer_rw' or opts.mode == 'prefer_ro' then
-        candidates = connect_to_candidates(candidates)
-    end
     for _, instance_name in pairs(candidates) do
         weights[instance_name] = 0
     end
