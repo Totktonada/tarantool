@@ -96,13 +96,13 @@ end
 
 -- This method connects to all of the specified instances
 -- and returns the set of successfully connected ones.
-local function connect_to_candidates(instance_names)
-    if next(instance_names) == nil then return {} end
+local function connect_to_candidates(candidates)
+    if next(candidates) == nil then return {} end
 
     local delay = WATCHER_DELAY
     local connect_deadline = clock.monotonic() + WATCHER_TIMEOUT
 
-    for _, instance_name in pairs(instance_names) do
+    for _, instance_name in pairs(candidates) do
         pcall(connect, instance_name, {
             wait_connected = false,
             connect_timeout = WATCHER_TIMEOUT
@@ -113,11 +113,11 @@ local function connect_to_candidates(instance_names)
 
     local connected_candidates = {}
     while clock.monotonic() < connect_deadline do
-        connected_candidates = fun.iter(instance_names)
+        connected_candidates = fun.iter(candidates)
             :filter(is_candidate_connected)
             :totable()
 
-        local all_checked = fun.iter(instance_names)
+        local all_checked = fun.iter(candidates)
             :all(is_candidate_checked)
 
         if all_checked then
