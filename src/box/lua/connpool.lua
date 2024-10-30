@@ -294,11 +294,15 @@ local function filter(opts)
         return static_candidates
     end
 
-    -- Filter the remaining candidates after connecting to them.
+    -- The skip_connection_check = false mode (the default one)
+    -- is in fact a kind of a dynamic filter. We should shrink
+    -- the list of candidates to ones with alive connections.
     --
     -- The connect_to_candidates() call returns quickly if it
     -- receives empty table as an argument.
     local connected_candidates = connect_to_candidates(static_candidates)
+
+    -- Filter the remaining candidates after connecting to them.
     local dynamic_candidates = {}
     for _, instance_name in pairs(connected_candidates) do
         if is_candidate_match_dynamic(instance_name, dynamic_opts) then
