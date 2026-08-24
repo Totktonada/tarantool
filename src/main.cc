@@ -92,6 +92,7 @@
 #include "core/event.h"
 #include "on_shutdown.h"
 #include "tnt_thread.h"
+#include "lib/http_server/http_server.h"
 
 static pid_t master_pid = getpid();
 static struct pidfh *pid_file_handle;
@@ -561,6 +562,8 @@ tarantool_free(void)
 	if (!cord_is_main())
 		return;
 
+	http_server_free();
+
 	/* Shutdown worker pool. Waits until threads terminate. */
 	coio_shutdown();
 
@@ -1017,6 +1020,7 @@ main(int argc, char **argv)
 	ssl_init();
 	event_init();
 	systemd_init();
+	http_server_init();
 
 	const int override_cert_paths_env_vars = 0;
 	int res = tnt_ssl_cert_paths_discover(override_cert_paths_env_vars);

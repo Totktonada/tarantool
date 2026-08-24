@@ -284,7 +284,7 @@ set_source_files_compile_flags(${server_sources})
 add_library(server STATIC ${server_sources})
 add_dependencies(server build_bundled_libs)
 target_link_libraries(server core coll digest http_parser bit uri swim swim_udp
-                      swim_ev crypto mpstream tzcode)
+                      swim_ev crypto mpstream tzcode http_server)
 target_include_directories(server PRIVATE ${EXTRA_SERVER_INCLUDE_DIRS})
 
 if(EMBED_LUAZLIB)
