@@ -11,19 +11,22 @@
 extern "C" {
 #endif /* __cplusplus */
 
-void
-http_server_config_thread_count(size_t thread_count);
+struct http_thread_config {
+	struct uri listen_uri;
+};
 
+// To be called from tx.
 void
-http_server_config_listen_uri(const struct uri *listen_uri);
+http_thread_start(size_t thread_id);
 
-/* Initialize the http server subsystem. */
+// To be called from tx.
 void
-http_server_init(void);
+http_thread_stop(size_t thread_id);
 
-/* Deinitialize the http server subsystem. */
+// To be called from tx.
 void
-http_server_free(void);
+http_thread_push_config(size_t thread_id,
+			const struct http_thread_config *config);
 
 #ifdef __cplusplus
 } /* extern "C" */
