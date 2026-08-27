@@ -1,2 +1,2 @@
-add_library(http_server STATIC http_server.c)
+add_library(http_server STATIC http_server.c http_thread.c)
 target_link_libraries(http_server uri)
