@@ -12,8 +12,27 @@
 #include "http_config.h"
 #include "http_thread.h"
 
+struct http_server_state {
+	int listen_fd;
+};
+
 /* Globals. */
 static struct latch reconfiguration_latch;
+static struct http_config config;
+static struct http_server_state state;
+
+static void
+http_server_config_init(void)
+{
+	config.thread_count = 0;
+	uri_create(&config.listen_uri, NULL);
+}
+
+static void
+http_server_state_init(void)
+{
+	state.listen_fd = -1;
+}
 
 void
 http_server_config_thread_count(size_t thread_count)
@@ -31,11 +50,22 @@ http_server_config_thread_count(size_t thread_count)
 		/* Add more threads. */
 		size_t from = config.thread_count;
 		size_t to = thread_count;
+
+		/* Zero thread is special: it creates a listening socket. */
+		int listen_fd = from == 0
+			? http_thread_set_listen_uri(&config.listen_uri)
+			: http_thread_get_listen_id();
+		if (from == 0) {
+			int fd = ;
+		} else {
+			int fd = http_thread_get_listen_fd();
+		}
+
+		if (from == 0) {
+			// XXX
+		}
+
 		for (size_t i = from; i < to; ++i) {
-			int fd = -1;
-			if (i == 0) {
-				fd = http_thread_listen_uri(i);
-			}
 			// XXX: if zero thread is to be started, then
 			// push listen uri to first thread, receive fd
 			//
@@ -46,6 +76,10 @@ http_server_config_thread_count(size_t thread_count)
 			// XXX: we've to get listening socket fd and pass it
 			// to threads to make accepts
 			http_thread_start(i);
+
+			if (i == 0) {
+
+			}
 			// http_thread_push_config(i, &config);
 		}
 	} else {
@@ -113,17 +147,19 @@ void
 http_server_init(void)
 {
 	latch_create(&reconfiguration_latch);
-	http_config_init();
+	http_server_config_init();
+	http_server_state_init();
 }
 
 void
 http_server_free(void)
 {
 	latch_lock(&reconfiguration_latch);
-	for (size_t i = 0; i < config.thread_count; ++i) {
+	for (size_t i = config.thread_count - 1; i>= 0; --i) {
 		http_thread_stop(i);
 	}
-	http_config_free();
+	TRASH(&config);
+	TRASH(&state);
 	latch_unlock(&reconfiguration_latch);
 
 	TRASH(&reconfiguration_latch);

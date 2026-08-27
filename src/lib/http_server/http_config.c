@@ -9,6 +9,7 @@
 #include "trivia/util.h"
 #include "uri/uri.h"
 
+#if 0
 /* Globals. */
 struct http_config config;
 
@@ -24,3 +25,4 @@ http_config_free(void)
 {
 	TRASH(&config);
 }
+#endif
