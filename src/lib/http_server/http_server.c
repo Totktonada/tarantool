@@ -52,42 +52,21 @@ http_server_config_thread_count(size_t thread_count)
 		size_t to = thread_count;
 
 		/* Zero thread is special: it creates a listening socket. */
-		int listen_fd = from == 0
-			? http_thread_set_listen_uri(&config.listen_uri)
-			: http_thread_get_listen_id();
 		if (from == 0) {
-			int fd = ;
-		} else {
-			int fd = http_thread_get_listen_fd();
-		}
-
-		if (from == 0) {
-			// XXX
+			state.listen_fd =
+				http_thread_listen_uri(0, &config.listen_uri);
 		}
 
 		for (size_t i = from; i < to; ++i) {
-			// XXX: if zero thread is to be started, then
-			// push listen uri to first thread, receive fd
-			//
-			// otherwise just receive fd?
-			//
-			// push fd to other threads
-
-			// XXX: we've to get listening socket fd and pass it
-			// to threads to make accepts
 			http_thread_start(i);
-
-			if (i == 0) {
-
-			}
-			// http_thread_push_config(i, &config);
+			http_thread_accept(i, state.listen_fd);
 		}
 	} else {
 		/* Stop some threads. */
 		size_t from = config.thread_count - 1;
-		size_t to = thread_count;
-		for (size_t i = from; i >= to; --i) {
-			http_thread_start(i);
+		size_t to = thread_count - 1;
+		for (size_t i = from; i != to; --i) {
+			http_thread_stop(i);
 		}
 	}
 
@@ -112,12 +91,11 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 
 	uri_copy(&config.listen_uri, listen_uri);
 
-	for (size_t i = 0; i < config.thread_count; ++i) {
-		// http_thread_push_config(i, &config);
+	/* Renew a listening socket in the zero thread. */
+	state.listen_fd = http_thread_listen_uri(0, &config.listen_uri);
 
-		// XXX: push uri to first thread, receive fd
-		//
-		// push fd to other threads
+	for (size_t i = 0; i < config.thread_count; ++i) {
+		http_thread_accept(i, state.listen_fd);
 	}
 
 	latch_unlock(&reconfiguration_latch);
@@ -146,6 +124,7 @@ http_server_stop(void)
 void
 http_server_init(void)
 {
+	http_thread_init();
 	latch_create(&reconfiguration_latch);
 	http_server_config_init();
 	http_server_state_init();
@@ -155,7 +134,7 @@ void
 http_server_free(void)
 {
 	latch_lock(&reconfiguration_latch);
-	for (size_t i = config.thread_count - 1; i>= 0; --i) {
+	for (size_t i = config.thread_count - 1; i != (size_t)-1; --i) {
 		http_thread_stop(i);
 	}
 	TRASH(&config);
@@ -163,4 +142,6 @@ http_server_free(void)
 	latch_unlock(&reconfiguration_latch);
 
 	TRASH(&reconfiguration_latch);
+
+	http_thread_free();
 }
