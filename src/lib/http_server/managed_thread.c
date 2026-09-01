@@ -85,6 +85,11 @@ managed_thread_f(void *arg)
 	size_t thread_id = (size_t)arg;
 	struct managed_thread *thread = threads[thread_id];
 
+	/*
+	 * XXX: It possibly worth to create our own endpoint, because tx_prio
+	 * originally (before the patches) is created on box.cfg(). We don't
+	 * want to depend on box here.
+	 */
 	cpipe_create(&thread->call_ret_pipe, "tx_prio");
 
 	/* Cbus endpoint for messages from thread->call_pipe. */
