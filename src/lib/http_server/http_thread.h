@@ -21,13 +21,14 @@ http_thread_stop(size_t thread_id);
 
 /* To be called from tx.
  *
- * Returns listen fd.
+ * Writes listen fd to the output argument.
  */
 int
-http_thread_listen_uri(size_t thread_id, const struct uri *listen_uri);
+http_thread_listen_uri(size_t thread_id, const struct uri *listen_uri,
+		       int *listen_fd);
 
 /* To be called from tx. */
-void
+int
 http_thread_accept(size_t thread_id, int listen_fd);
 
 /* To be called from tx. */

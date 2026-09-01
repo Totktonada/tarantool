@@ -53,9 +53,12 @@ static int
 lbox_listen_uri(struct lua_State *L)
 {
 	struct uri listen_uri;
-	if (luaT_uri_create(L, 1, &listen_uri) != 0)
+	if (luaT_uri_create(L, 1, &listen_uri) != 0) {
 		return luaT_error(L);
-	http_server_config_listen_uri(&listen_uri);
+	}
+	if (http_server_config_listen_uri(&listen_uri) != 0) {
+		return luaT_error(L);
+	}
 	return 0;
 }
 
@@ -63,7 +66,9 @@ static int
 lbox_thread_count(struct lua_State *L)
 {
 	size_t thread_count = luaT_check_thread_count(L, 1);
-	http_server_config_thread_count(thread_count);
+	if (http_server_config_thread_count(thread_count) != 0) {
+		return luaT_error(L);
+	}
 	return 0;
 }
 

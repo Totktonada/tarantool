@@ -11,10 +11,10 @@
 extern "C" {
 #endif /* __cplusplus */
 
-void
+int
 http_server_config_thread_count(size_t thread_count);
 
-void
+int
 http_server_config_listen_uri(const struct uri *listen_uri);
 
 /* Initialize the http server subsystem. */

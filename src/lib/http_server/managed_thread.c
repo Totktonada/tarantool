@@ -31,8 +31,8 @@ struct managed_thread {
 struct managed_thread_call_msg {
 	struct cbus_call_msg base;
 	managed_thread_call_f func;
-	const void *arg;
-	int ret;
+	void *arg_1;
+	void *arg_2;
 };
 
 /* Globals. */
@@ -112,14 +112,12 @@ call_adaptor(struct cbus_call_msg *base)
 {
 	struct managed_thread_call_msg *msg =
 		container_of(base, struct managed_thread_call_msg, base);
-	msg->ret = msg->func(msg->arg);
-	// Don't do diag_move() in cbus_call_perform().
-	return 0;
+	return msg->func(msg->arg_1, msg->arg_2);
 }
 
 int
 managed_thread_call(size_t thread_id, managed_thread_call_f func,
-		    const void *arg)
+		    void *arg_1, void *arg_2)
 {
 	assert(cord_is_main());
 	assert(thread_id < threads_capacity && threads[thread_id] != NULL);
@@ -127,14 +125,12 @@ managed_thread_call(size_t thread_id, managed_thread_call_f func,
 	struct managed_thread *thread = threads[thread_id];
 
 	// Yields until the function returns.
-	//
-	// XXX: error handing: solved by cbus_call?
 	struct managed_thread_call_msg msg;
 	msg.func = func;
-	msg.arg = arg;
-	cbus_call(&thread->call_pipe, &thread->call_ret_pipe, &msg.base,
-		  call_adaptor);
-	return msg.ret;
+	msg.arg_1 = arg_1;
+	msg.arg_2 = arg_2;
+	return cbus_call(&thread->call_pipe, &thread->call_ret_pipe, &msg.base,
+			 call_adaptor);
 }
 
 void

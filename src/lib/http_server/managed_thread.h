@@ -18,12 +18,12 @@
 extern "C" {
 #endif /* __cplusplus */
 
-typedef int (*managed_thread_call_f)(const void *);
+typedef int (*managed_thread_call_f)(void *, void *);
 
 /* To be called from tx. */
 int
 managed_thread_call(size_t thread_id, managed_thread_call_f func,
-		    const void *arg);
+		    void *arg_1, void *arg_2);
 
 /* To be called from tx. */
 void

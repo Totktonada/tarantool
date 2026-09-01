@@ -19,9 +19,10 @@ enum {
 };
 
 static int
-thread_listen_uri(const void *arg)
+thread_listen_uri(void *arg_1, void *arg_2)
 {
-	const struct uri *listen_uri = arg;
+	const struct uri *listen_uri = (const struct uri *)arg_1;
+	int *listen_fd = (int *)arg_2;
 
 	// XXX: do listen
 	char uri_str[URI_BUFFER_SIZE];
@@ -29,13 +30,15 @@ thread_listen_uri(const void *arg)
 	say_debug("listen_uri is set to %s\n", uri_str);
 
 	// XXX: Return listen_fd.
-	return -1;
+	*listen_fd = -1;
+	return 0;
 }
 
 static int
-thread_accept(const void *arg)
+thread_accept(void *arg_1, void *arg_2)
 {
-	int listen_fd = (int)(intptr_t)arg;
+	int listen_fd = (int)(intptr_t)arg_1;
+	(void)arg_2;
 
 	// XXX: do accept
 	(void)listen_fd;
@@ -57,20 +60,22 @@ http_thread_stop(size_t thread_id)
 }
 
 int
-http_thread_listen_uri(size_t thread_id, const struct uri *listen_uri)
+http_thread_listen_uri(size_t thread_id, const struct uri *listen_uri,
+		       int *listen_fd)
 {
 	assert(thread_id == 0);
 
-	// XXX: error handling
-	return managed_thread_call(thread_id, thread_listen_uri, listen_uri);
+	void *arg_1 = (void *)listen_uri;
+	void *arg_2 = (void *)listen_fd;
+	return managed_thread_call(thread_id, thread_listen_uri, arg_1, arg_2);
 }
 
-void
+int
 http_thread_accept(size_t thread_id, int listen_fd)
 {
-	// XXX: error handling
-	const void *arg = (const void *)(intptr_t)listen_fd;
-	managed_thread_call(thread_id, thread_accept, arg);
+	void *arg_1 = (void *)(intptr_t)listen_fd;
+	void *arg_2 = NULL;
+	return managed_thread_call(thread_id, thread_accept, arg_1, arg_2);
 }
 
 void

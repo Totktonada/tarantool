@@ -38,7 +38,7 @@ http_server_state_init(void)
 	state.listen_fd = -1;
 }
 
-void
+int
 http_server_config_thread_count(size_t thread_count)
 {
 	// Do not enter into configuration changing functions
@@ -47,7 +47,7 @@ http_server_config_thread_count(size_t thread_count)
 
 	if (config.thread_count == thread_count) {
 		latch_unlock(&reconfiguration_latch);
-		return;
+		return 0;
 	}
 
 	if (config.thread_count < thread_count) {
@@ -62,9 +62,11 @@ http_server_config_thread_count(size_t thread_count)
 			 * socket.
 			 */
 			if (i == 0) {
-				state.listen_fd = http_thread_listen_uri(
-					0, &config.listen_uri);
+				// XXX: Error handling.
+				http_thread_listen_uri(0, &config.listen_uri,
+						       &state.listen_fd);
 			}
+			// XXX: Error handling.
 			http_thread_accept(i, state.listen_fd);
 		}
 	} else {
@@ -79,9 +81,10 @@ http_server_config_thread_count(size_t thread_count)
 	config.thread_count = thread_count;
 
 	latch_unlock(&reconfiguration_latch);
+	return 0;
 }
 
-void
+int
 http_server_config_listen_uri(const struct uri *listen_uri)
 {
 	// Do not enter into configuration changing functions
@@ -92,7 +95,7 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 	// key/certs paths remain unchanged.
 	if (uri_is_equal(&config.listen_uri, listen_uri)) {
 		latch_unlock(&reconfiguration_latch);
-		return;
+		return 0;
 	}
 
 	uri_copy(&config.listen_uri, listen_uri);
@@ -102,14 +105,17 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 	 * started.
 	 */
 	if (config.thread_count > 0) {
-		state.listen_fd = http_thread_listen_uri(0, &config.listen_uri);
+		// XXX: Error handling.
+		http_thread_listen_uri(0, &config.listen_uri, &state.listen_fd);
 	}
 
 	for (size_t i = 0; i < config.thread_count; ++i) {
+		// XXX: Error handling.
 		http_thread_accept(i, state.listen_fd);
 	}
 
 	latch_unlock(&reconfiguration_latch);
+	return 0;
 }
 
 void
