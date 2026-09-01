@@ -57,8 +57,10 @@ lbox_listen_uri(struct lua_State *L)
 		return luaT_error(L);
 	}
 	if (http_server_config_listen_uri(&listen_uri) != 0) {
+		uri_destroy(&listen_uri);
 		return luaT_error(L);
 	}
+	uri_destroy(&listen_uri);
 	return 0;
 }
 

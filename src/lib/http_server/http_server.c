@@ -33,6 +33,12 @@ http_server_config_init(void)
 }
 
 static void
+http_server_config_free(void)
+{
+	uri_destroy(&config.listen_uri);
+}
+
+static void
 http_server_state_init(void)
 {
 	state.listen_fd = -1;
@@ -98,6 +104,7 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 		return 0;
 	}
 
+	uri_destroy(&config.listen_uri);
 	uri_copy(&config.listen_uri, listen_uri);
 
 	/*
@@ -134,6 +141,7 @@ http_server_free(void)
 	for (size_t i = config.thread_count - 1; i != (size_t)-1; --i) {
 		http_thread_stop(i);
 	}
+	http_server_config_free();
 	TRASH(&config);
 	TRASH(&state);
 	latch_unlock(&reconfiguration_latch);
