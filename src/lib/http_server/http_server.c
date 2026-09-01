@@ -9,8 +9,12 @@
 #include "trivia/util.h"
 #include "core/latch.h"
 #include "uri/uri.h"
-#include "http_config.h"
 #include "http_thread.h"
+
+struct http_server_config {
+	size_t thread_count;
+	struct uri listen_uri;
+};
 
 struct http_server_state {
 	int listen_fd;
@@ -18,7 +22,7 @@ struct http_server_state {
 
 /* Globals. */
 static struct latch reconfiguration_latch;
-static struct http_config config;
+static struct http_server_config config;
 static struct http_server_state state;
 
 static void
@@ -51,14 +55,16 @@ http_server_config_thread_count(size_t thread_count)
 		size_t from = config.thread_count;
 		size_t to = thread_count;
 
-		/* Zero thread is special: it creates a listening socket. */
-		if (from == 0) {
-			state.listen_fd =
-				http_thread_listen_uri(0, &config.listen_uri);
-		}
-
 		for (size_t i = from; i < to; ++i) {
 			http_thread_start(i);
+			/*
+			 * Zero thread is special: it creates a listening
+			 * socket.
+			 */
+			if (i == 0) {
+				state.listen_fd = http_thread_listen_uri(
+					0, &config.listen_uri);
+			}
 			http_thread_accept(i, state.listen_fd);
 		}
 	} else {
@@ -91,8 +97,13 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 
 	uri_copy(&config.listen_uri, listen_uri);
 
-	/* Renew a listening socket in the zero thread. */
-	state.listen_fd = http_thread_listen_uri(0, &config.listen_uri);
+	/*
+	 * Renew a listening socket in the zero thread if the thread is already
+	 * started.
+	 */
+	if (config.thread_count > 0) {
+		state.listen_fd = http_thread_listen_uri(0, &config.listen_uri);
+	}
 
 	for (size_t i = 0; i < config.thread_count; ++i) {
 		http_thread_accept(i, state.listen_fd);
@@ -100,26 +111,6 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 
 	latch_unlock(&reconfiguration_latch);
 }
-
-#if 0
-// XXX: move to thread
-void
-http_server_start(void)
-{
-	// TODO: Propagate errors upward instead of assertions?
-	assert(!uri_is_nil(&config.listen_uri));
-	// XXX: bind + listen
-}
-
-// XXX: move to thread
-void
-http_server_stop(void)
-{
-	// XXX: unbind
-	// XXX: shutdown
-	// XXX: close socket
-}
-#endif
 
 void
 http_server_init(void)

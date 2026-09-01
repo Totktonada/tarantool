@@ -204,6 +204,7 @@ set (server_sources
      lua/fio.c
      lua/popen.c
      lua/httpc.c
+     lua/http_server.c
      lua/utf8.c
      lua/info.c
      lua/string.c

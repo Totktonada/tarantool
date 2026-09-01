@@ -3,137 +3,84 @@
  *
  * Copyright 2010-2026, Tarantool AUTHORS, please see AUTHORS file.
  */
-#include "http_server.h"
+#include "http_thread.h"
 
-#include <assert.h>
 #include <stddef.h>
 #include "trivia/util.h"
 #include "uri/uri.h"
 #include "core/fiber.h"
 #include "core/say.h"
 #include "tarantool_ev.h"
+#include "managed_thread.h"
 
 /* Constants. */
 enum {
-	INITIAL_CORDS_CAPACITY = 16,
+	URI_BUFFER_SIZE = 1024,
 };
 
-/* Globals. */
-static struct cord **cords;
-static size_t cords_capacity;
-
-/* Thread-local state. */
-static __thread int listen_fd;
-
-/* Forward declarations. */
-static void *
-thread_start(void *arg);
-
-/* {{{ Wrappers to call from tx */
-
-/* Extend cords array if needed. */
-static void
-cords_resize(size_t thread_id)
+static int
+thread_listen_uri(const void *arg)
 {
-	if (thread_id < cords_capacity) {
-		return;
-	}
+	const struct uri *listen_uri = arg;
 
-	size_t old_capacity = cords_capacity;
-	struct cord **old_cords = cords;
-	cords_capacity *= 2;
-	cords = xcalloc(cords_capacity,	sizeof(*cords));
-	for (size_t i = 0; i < old_capacity; ++i) {
-		cords[i] = old_cords[i];
-	}
-	free(old_cords);
+	// XXX: do listen
+	char uri_str[URI_BUFFER_SIZE];
+	uri_format(uri_str, sizeof(uri_str), listen_uri, false);
+	say_debug("listen_uri is set to %s\n", uri_str);
+
+	// XXX: Return listen_fd.
+	return -1;
+}
+
+static int
+thread_accept(const void *arg)
+{
+	int listen_fd = (int)(intptr_t)arg;
+
+	// XXX: do accept
+	(void)listen_fd;
+	say_debug("accept is called\n");
+
+	return 0;
 }
 
 void
 http_thread_start(size_t thread_id)
 {
-	assert(cord_is_main());
-	assert(thread_id >= cords_capacity || cords[thread_id] == NULL);
-
-	cords_resize(thread_id);
-	assert(cords[thread_id] == NULL);
-	cords[thread_id] = xmalloc(sizeof(**cords));
-	char name[16];
-	snprintf(name, sizeof(name), "http_%ld", thread_id);
-	int rc = cord_start(cords[thread_id], name, thread_start,
-			    (void *)thread_id);
-	if (rc != 0) {
-		panic_syserror("failed to start http thread");
-	}
+	managed_thread_start(thread_id);
 }
 
 void
 http_thread_stop(size_t thread_id)
 {
-	assert(cord_is_main());
-	assert(thread_id < cords_capacity && cords[thread_id] != NULL);
-	// XXX: stop
-	// XXX: join
-
-	free(cords[thread_id]);
-	cords[thread_id] = NULL;
+	managed_thread_stop(thread_id);
 }
 
 int
 http_thread_listen_uri(size_t thread_id, const struct uri *listen_uri)
 {
-	assert(cord_is_main());
 	assert(thread_id == 0);
 
-	// XXX: do listen in thread
-	(void)listen_uri;
-
-	// XXX: return listen_fd
-	return -1;
+	// XXX: error handling
+	return managed_thread_call(thread_id, thread_listen_uri, listen_uri);
 }
 
 void
 http_thread_accept(size_t thread_id, int listen_fd)
 {
-	assert(cord_is_main());
-
-	(void)thread_id;
-
-	// XXX: do accept
-	(void)listen_fd;
+	// XXX: error handling
+	const void *arg = (const void *)(intptr_t)listen_fd;
+	managed_thread_call(thread_id, thread_accept, arg);
 }
 
 void
 http_thread_init(void)
 {
-	cords_capacity = INITIAL_CORDS_CAPACITY;
-	cords = xcalloc(cords_capacity, sizeof(*cords));
+	managed_thread_init("http_");
 }
 
 void
 http_thread_free(void)
 {
-	for (size_t i = 0; i < cords_capacity; ++i) {
-		assert(cords[i] == NULL);
-	}
-	free(cords);
-	cords = NULL;
-	cords_capacity = 0;
+	managed_thread_free();
 }
-
-/* }}} Wrappers to call from tx */
-
-/* {{{ Functions that work in the http thread */
-
-static void *
-thread_start(void *arg)
-{
-	size_t thread_id = (size_t)arg;
-	(void)thread_id;
-	listen_fd = -1;
-	ev_run(loop(), 0);
-	// XXX: init cbus endpoint
-	return NULL;
-}
-
-/* }}} Functions that work in the http thread */

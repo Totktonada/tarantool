@@ -64,6 +64,7 @@
 #include "lua/fio.h"
 #include "lua/popen.h"
 #include "lua/httpc.h"
+#include "lua/http_server.h"
 #include "lua/utf8.h"
 #include "lua/swim.h"
 #include "lua/decimal.h"
@@ -884,6 +885,8 @@ tarantool_lua_init_minimal_impl(lua_State *L)
 	lua_pop(L, 1);
 	luaopen_http_client_driver(L);
 	lua_pop(L, 1);
+
+	luaopen_http_server_lib(L);
 
 	luaopen_tarantool(L);
 	for (const char * const *s = lua_modules_minimal; *s; s += 2) {
