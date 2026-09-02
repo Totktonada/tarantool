@@ -13,6 +13,7 @@
 #include "core/say.h"
 #include "tarantool_ev.h"
 #include "core/evio.h"
+#include "core/iostream.h"
 #include "managed_thread.h"
 
 /* Constants. */
@@ -25,7 +26,21 @@ enum {
  * in all the threads.
  */
 static __thread struct evio_service listen_service;
-// static __thread struct evio_service accept_service;
+static __thread struct evio_service accept_service;
+
+static void
+on_accept(struct evio_service *accept_service, struct iostream *io,
+	  struct sockaddr *addr, socklen_t addrlen)
+{
+	(void)accept_service;
+	(void)addr;
+	(void)addrlen;
+
+	// TODO: Start the read-write-close loop.
+	struct iostream myio;
+	iostream_move(&myio, io);
+	say_debug("accepted connection");
+}
 
 static int
 thread_start(void *arg_1, void *arg_2)
@@ -37,6 +52,11 @@ thread_start(void *arg_1, void *arg_2)
 	snprintf(service_name, sizeof(service_name), "%s_listen",
 		 managed_thread_name());
 	evio_service_create(loop(), &listen_service, service_name, NULL, NULL);
+
+	snprintf(service_name, sizeof(service_name), "%s_accept",
+		 managed_thread_name());
+	evio_service_create(loop(), &accept_service, service_name, on_accept,
+			    NULL);
 
 	return 0;
 }
@@ -95,8 +115,7 @@ thread_accept_start(void *arg_1, void *arg_2)
 	struct evio_service *listen_service = (struct evio_service *)arg_1;
 	(void)arg_2;
 
-	// XXX: attach
-	(void)listen_service;
+	evio_service_attach(&accept_service, listen_service);
 	say_debug("accepting is started");
 
 	return 0;
@@ -108,7 +127,7 @@ thread_accept_stop(void *arg_1, void *arg_2)
 	(void)arg_1;
 	(void)arg_2;
 
-	// XXX: detach
+	evio_service_detach(&accept_service);
 	say_debug("accepting is stopped");
 
 	return 0;
