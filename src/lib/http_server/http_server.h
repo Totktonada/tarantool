@@ -5,11 +5,13 @@
  */
 #pragma once
 
-#include "uri/uri.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
+
+struct uri;
 
 int
 http_server_config_thread_count(size_t thread_count);

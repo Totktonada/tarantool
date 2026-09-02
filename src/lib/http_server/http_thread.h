@@ -5,13 +5,14 @@
  */
 #pragma once
 
-#include "uri/uri.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
 struct evio_service;
+struct uri;
 
 /* To be called from tx. */
 void
