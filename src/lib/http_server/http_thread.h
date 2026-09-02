@@ -49,6 +49,10 @@ http_thread_init(void);
 
 /* To be called from tx. */
 void
+http_thread_shutdown(void);
+
+/* To be called from tx. */
+void
 http_thread_free(void);
 
 #ifdef __cplusplus

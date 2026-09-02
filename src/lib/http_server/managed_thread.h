@@ -49,6 +49,10 @@ managed_thread_init(const char *name_prefix);
 
 /* To be called from tx. */
 void
+managed_thread_shutdown(void);
+
+/* To be called from tx. */
+void
 managed_thread_free(void);
 
 #ifdef __cplusplus

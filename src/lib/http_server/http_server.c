@@ -176,6 +176,8 @@ http_server_shutdown(void)
 		teardown_thread(i, true);
 	}
 	latch_unlock(&reconfiguration_latch);
+
+	http_thread_shutdown();
 }
 
 void

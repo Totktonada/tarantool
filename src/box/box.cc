@@ -6692,6 +6692,9 @@ box_storage_init(void)
 	fiber_pool_create(&tx_fiber_pool, "tx",
 			  IPROTO_MSG_MAX_MIN * IPROTO_FIBER_POOL_SIZE_FACTOR,
 			  box_fiber_pool_idle_timeout);
+	/* Add an extra endpoint for WAL wake up/rollback messages. */
+	cbus_endpoint_create(&tx_prio_endpoint, "tx_prio", tx_prio_cb,
+			     &tx_prio_endpoint);
 
 	rmean_box = rmean_new(iproto_type_strs, IPROTO_TYPE_STAT_MAX);
 	rmean_error = rmean_new(rmean_error_strings, RMEAN_ERROR_LAST);
@@ -6793,10 +6796,6 @@ box_init(void)
 	builtin_events_init();
 	crash_callback = box_crash_callback;
 	memtx_tx_manager_init();
-
-	/* Add an extra endpoint for WAL wake up/rollback messages. */
-	cbus_endpoint_create(&tx_prio_endpoint, "tx_prio", tx_prio_cb,
-			     &tx_prio_endpoint);
 }
 
 void

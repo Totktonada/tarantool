@@ -191,6 +191,12 @@ http_thread_init(void)
 }
 
 void
+http_thread_shutdown(void)
+{
+	managed_thread_shutdown();
+}
+
+void
 http_thread_free(void)
 {
 	managed_thread_free();

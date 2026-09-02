@@ -36,6 +36,8 @@ struct managed_thread_call_msg {
 };
 
 /* Globals. */
+static char call_ret_endpoint_name[THREAD_NAME_BUFFER_SIZE];
+static struct cbus_endpoint call_ret_endpoint;
 static char thread_name_prefix[THREAD_NAME_PREFIX_MAX];
 static struct managed_thread **threads;
 static size_t threads_capacity;
@@ -76,6 +78,22 @@ thread_endpoint_cb(ev_loop *loop, struct ev_watcher *watcher, int events)
 	}
 }
 
+/**
+ * Process all the messages right in the callback.
+ *
+ * It works, because the last hop of cbus_call()'s route does not
+ * yield (it just schedules the caller fiber) and because we don't
+ * use this endpoint only for cbus_call().
+ */
+static void
+call_ret_endpoint_cb(ev_loop *loop, struct ev_watcher *watcher, int events)
+{
+	(void)loop;
+	(void)events;
+	struct cbus_endpoint *endpoint = (struct cbus_endpoint *)watcher->data;
+	cbus_process(endpoint);
+}
+
 static void
 thread_name_copy(char *buf, size_t buf_size, size_t thread_id)
 {
@@ -97,12 +115,7 @@ managed_thread_f(void *arg)
 	/* Save the thread name into a thread local variable. */
 	thread_name_copy(thread_name, sizeof(thread_name), thread_id);
 
-	/*
-	 * XXX: It possibly worth to create our own endpoint, because tx_prio
-	 * originally (before the patches) is created on box.cfg(). We don't
-	 * want to depend on box here.
-	 */
-	cpipe_create(&thread->call_ret_pipe, "tx_prio");
+	cpipe_create(&thread->call_ret_pipe, call_ret_endpoint_name);
 
 	/* Cbus endpoint for messages from thread->call_pipe. */
 	struct cbus_endpoint endpoint;
@@ -188,10 +201,26 @@ managed_thread_stop(size_t thread_id)
 void
 managed_thread_init(const char *name_prefix)
 {
+	/*
+	 * Use our own tx side endpoint, because tx/tx_prio are created on box
+	 * configuration and not available beforehand.
+	 */
+	snprintf(call_ret_endpoint_name, sizeof(call_ret_endpoint_name),
+		"%scall_ret", name_prefix);
+	cbus_endpoint_create(&call_ret_endpoint, call_ret_endpoint_name,
+			     call_ret_endpoint_cb, &call_ret_endpoint);
+
 	strlcpy(thread_name_prefix, name_prefix, sizeof(thread_name_prefix));
 
 	threads_capacity = INITIAL_THREADS_CAPACITY;
 	threads = xcalloc(threads_capacity, sizeof(*threads));
+}
+
+void
+managed_thread_shutdown(void)
+{
+	/* Needs an event loop, so call it on shutdown, not in ..._free(). */
+	cbus_endpoint_destroy(&call_ret_endpoint, cbus_process);
 }
 
 void
