@@ -21,6 +21,10 @@ http_server_config_listen_uri(const struct uri *listen_uri);
 void
 http_server_init(void);
 
+/* Close sockets, stop threads. */
+void
+http_server_shutdown(void);
+
 /* Deinitialize the http server subsystem. */
 void
 http_server_free(void);

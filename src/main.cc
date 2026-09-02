@@ -159,6 +159,7 @@ on_shutdown_f(va_list ap)
 		diag_log();
 		diag_clear(diag_get());
 	}
+	http_server_shutdown();
 	box_shutdown();
 	tnt_thread_shutdown();
 	shutdown_finished = true;

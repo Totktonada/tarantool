@@ -11,6 +11,8 @@
 extern "C" {
 #endif /* __cplusplus */
 
+struct evio_service;
+
 /* To be called from tx. */
 void
 http_thread_start(size_t thread_id);
@@ -19,17 +21,26 @@ http_thread_start(size_t thread_id);
 void
 http_thread_stop(size_t thread_id);
 
-/* To be called from tx.
- *
+/*
  * Writes listen fd to the output argument.
+ *
+ * To be called from tx.
  */
 int
-http_thread_listen_uri(size_t thread_id, const struct uri *listen_uri,
-		       int *listen_fd);
+http_thread_listen_start(size_t thread_id, const struct uri *listen_uri,
+			 struct evio_service **listen_service);
 
 /* To be called from tx. */
-int
-http_thread_accept(size_t thread_id, int listen_fd);
+void
+http_thread_listen_stop(size_t thread_id);
+
+/* To be called from tx. */
+void
+http_thread_accept_start(size_t thread_id, struct evio_service *listen_service);
+
+/* To be called from tx. */
+void
+http_thread_accept_stop(size_t thread_id);
 
 /* To be called from tx. */
 void

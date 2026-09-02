@@ -20,6 +20,16 @@ extern "C" {
 
 typedef int (*managed_thread_call_f)(void *, void *);
 
+/**
+ * Return the name of the current thread.
+ *
+ * The pointer is valid until the thread is stopped.
+ *
+ * To be called from the managed thread.
+ */
+char *
+managed_thread_name(void);
+
 /* To be called from tx. */
 int
 managed_thread_call(size_t thread_id, managed_thread_call_f func,

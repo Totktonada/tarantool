@@ -16,7 +16,7 @@
 /* Constants. */
 enum {
 	THREAD_NAME_PREFIX_MAX = 16,
-	THREAD_NAME_BUFFER_MAX = 32,
+	THREAD_NAME_BUFFER_SIZE = 32,
 	INITIAL_THREADS_CAPACITY = 16,
 };
 
@@ -39,6 +39,9 @@ struct managed_thread_call_msg {
 static char thread_name_prefix[THREAD_NAME_PREFIX_MAX];
 static struct managed_thread **threads;
 static size_t threads_capacity;
+
+/* Thread locals. */
+static __thread char thread_name[THREAD_NAME_BUFFER_SIZE];
 
 /* Extend the threads array if needed. */
 static void
@@ -74,9 +77,15 @@ thread_endpoint_cb(ev_loop *loop, struct ev_watcher *watcher, int events)
 }
 
 static void
-set_thread_name(char *buf, size_t buf_size, size_t thread_id)
+thread_name_copy(char *buf, size_t buf_size, size_t thread_id)
 {
 	snprintf(buf, buf_size, "%s%ld", thread_name_prefix, thread_id);
+}
+
+char *
+managed_thread_name(void)
+{
+	return thread_name;
 }
 
 static void *
@@ -84,6 +93,9 @@ managed_thread_f(void *arg)
 {
 	size_t thread_id = (size_t)arg;
 	struct managed_thread *thread = threads[thread_id];
+
+	/* Save the thread name into a thread local variable. */
+	thread_name_copy(thread_name, sizeof(thread_name), thread_id);
 
 	/*
 	 * XXX: It possibly worth to create our own endpoint, because tx_prio
@@ -94,9 +106,8 @@ managed_thread_f(void *arg)
 
 	/* Cbus endpoint for messages from thread->call_pipe. */
 	struct cbus_endpoint endpoint;
-	char name[THREAD_NAME_BUFFER_MAX];
-	set_thread_name(name, sizeof(name), thread_id);
-	cbus_endpoint_create(&endpoint, name, thread_endpoint_cb, &endpoint);
+	cbus_endpoint_create(&endpoint, thread_name, thread_endpoint_cb,
+			     &endpoint);
 
 	say_debug("thread is started\n");
 	ev_run(loop(), 0);
@@ -149,8 +160,8 @@ managed_thread_start(size_t thread_id)
 	struct managed_thread *thread = xmalloc(sizeof(struct managed_thread));
 	threads[thread_id] = thread;
 
-	char name[THREAD_NAME_BUFFER_MAX];
-	set_thread_name(name, sizeof(name), thread_id);
+	char name[THREAD_NAME_BUFFER_SIZE];
+	thread_name_copy(name, sizeof(name), thread_id);
 	struct cord *cord = &thread->cord;
 	if (cord_start(cord, name, managed_thread_f, (void *)thread_id) != 0) {
 		panic_syserror("failed to start managed thread %ld", thread_id);
