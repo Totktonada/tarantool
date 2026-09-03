@@ -50,17 +50,17 @@ luaT_check_thread_count(struct lua_State *L, int idx)
 }
 
 static int
-lbox_listen_uri(struct lua_State *L)
+lbox_listen(struct lua_State *L)
 {
-	struct uri listen_uri;
-	if (luaT_uri_create(L, 1, &listen_uri) != 0) {
+	struct uri_set listen_uris;
+	if (luaT_uri_set_create(L, 1, &listen_uris) != 0) {
 		return luaT_error(L);
 	}
-	if (http_server_config_listen_uri(&listen_uri) != 0) {
-		uri_destroy(&listen_uri);
+	if (http_server_config_listen(&listen_uris) != 0) {
+		uri_set_destroy(&listen_uris);
 		return luaT_error(L);
 	}
-	uri_destroy(&listen_uri);
+	uri_set_destroy(&listen_uris);
 	return 0;
 }
 
@@ -79,7 +79,7 @@ luaopen_http_server_lib(struct lua_State *L)
 {
 	/* Module methods. */
 	static const struct luaL_Reg methods[] = {
-		{"listen_uri",		lbox_listen_uri,	},
+		{"listen",		lbox_listen,		},
 		{"thread_count",	lbox_thread_count,	},
 		{NULL, NULL},
 	};
