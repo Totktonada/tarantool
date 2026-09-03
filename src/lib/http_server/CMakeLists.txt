@@ -3,6 +3,7 @@ add_library(
     STATIC
     http_server.c
     http_thread.c
+    http_connection.c
     managed_thread.c
 )
 target_link_libraries(http_server uri)
