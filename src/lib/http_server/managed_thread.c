@@ -219,7 +219,13 @@ managed_thread_init(const char *name_prefix)
 void
 managed_thread_shutdown(void)
 {
-	/* Needs an event loop, so call it on shutdown, not in ..._free(). */
+	/*
+	 * At this point all the managed threads must be stopped, however poison
+	 * messages may still be in fly. They likely read all at once in
+	 * cbus_process() without yielding, but let's stay on the safe side and
+	 * destroy the endpoint from the ..._shutdown() function (where we have
+	 * a running event loop and a fiber), not from the ..._free() function.
+	 */
 	cbus_endpoint_destroy(&call_ret_endpoint, cbus_process);
 }
 
