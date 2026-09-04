@@ -2,19 +2,25 @@
 
 ## Key features
 
-* Supports TLS and HTTP/2 (HTTP/1.0 and HTTP/1.1 are NOT supported).
-* IO is served from a separate thread.
+* Support TLS and HTTP/2 (HTTP/1.0 and HTTP/1.1 are NOT supported).
+* TLS and HTTP/2 parsing is performed in separate network threads.
+* One server may listen multiple addresses.
 
 ## Planned features
 
+* Balancing of a new connection to a network thread.
+* Re-balancing of connections to network threads on a disbalance beyond a
+  threshold.
 * Multiple http server instances.
-* Multiple listen sockets.
-* Multiple network threads.
 * Readahead buffer.
 * Backpressure (`net_msg_max`).
-* http.server adaptor; XXX: link
-* routing library similar to Golang's ServeMux; XXX: link
-* routing to application threads: XXX: link
+* [http.server][http.server] adaptor.
+* Routing library similar to Golang's [ServeMux][serve_mux].
+* Routing to [application threads][app_threads].
+
+[http.server]: https://github.com/tarantool/http
+[serve_mux]: https://pkg.go.dev/net/http#ServeMux
+[app_threads]: https://github.com/tarantool/tarantool/issues/12206
 
 ## Libraries
 
