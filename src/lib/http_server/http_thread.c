@@ -16,11 +16,6 @@
 #include "core/iostream.h"
 #include "managed_thread.h"
 
-/* Constants. */
-enum {
-	URI_BUFFER_SIZE = 1024,
-};
-
 /*
  * The listen service exists only in the zero thread. The accept service works
  * in all the threads.
