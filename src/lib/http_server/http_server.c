@@ -13,7 +13,7 @@
 
 struct http_server_config {
 	size_t thread_count;
-	struct uri listen_uri;
+	struct uri_set listen_uris;
 };
 
 struct http_server_state {
@@ -29,13 +29,13 @@ static void
 http_server_config_init(void)
 {
 	config.thread_count = 0;
-	uri_create(&config.listen_uri, NULL);
+	uri_set_create(&config.listen_uris, NULL);
 }
 
 static void
 http_server_config_free(void)
 {
-	uri_destroy(&config.listen_uri);
+	uri_set_destroy(&config.listen_uris);
 }
 
 static void
@@ -51,14 +51,14 @@ setup_thread(size_t thread_id, bool do_start)
 		http_thread_start(thread_id);
 	}
 
-	if (uri_is_nil(&config.listen_uri)) {
+	if (uri_set_is_nil(&config.listen_uris)) {
 		return 0;
 	}
 
 	/* Zero thread is special: it creates a listening socket. */
 	if (thread_id == 0) {
 		// XXX: Error handling.
-		http_thread_listen_start(thread_id, &config.listen_uri,
+		http_thread_listen_start(thread_id, &config.listen_uris,
 					 &state.listen_service);
 	}
 
@@ -119,7 +119,7 @@ http_server_config_thread_count(size_t thread_count)
 }
 
 int
-http_server_config_listen_uri(const struct uri *listen_uri)
+http_server_config_listen(const struct uri_set *listen_uris)
 {
 	// Do not enter into configuration changing functions
 	// simultaneously.
@@ -128,13 +128,13 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 	// TODO: Re-read TLS keys and certificates even if the URI and
 	// key/certs paths remain unchanged. Possibly is is better to do
 	// via some separate http_server_config_uri_reload() call.
-	if (uri_is_equal(&config.listen_uri, listen_uri)) {
+	if (uri_set_is_equal(&config.listen_uris, listen_uris)) {
 		latch_unlock(&reconfiguration_latch);
 		return 0;
 	}
 
-	uri_destroy(&config.listen_uri);
-	uri_copy(&config.listen_uri, listen_uri);
+	uri_set_destroy(&config.listen_uris);
+	uri_set_copy(&config.listen_uris, listen_uris);
 
 	if (config.thread_count == 0) {
 		latch_unlock(&reconfiguration_latch);
@@ -145,7 +145,7 @@ http_server_config_listen_uri(const struct uri *listen_uri)
 		teardown_thread(i, false);
 	}
 
-	if (uri_is_nil(&config.listen_uri)) {
+	if (uri_set_is_nil(&config.listen_uris)) {
 		latch_unlock(&reconfiguration_latch);
 		return 0;
 	}

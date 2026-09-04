@@ -449,6 +449,12 @@ uri_set_is_equal(const struct uri_set *a, const struct uri_set *b)
 	return true;
 }
 
+bool
+uri_set_is_nil(const struct uri_set *uri_set)
+{
+	return uri_set->uri_count == 0;
+}
+
 /**
  * String percent-encoding.
  */

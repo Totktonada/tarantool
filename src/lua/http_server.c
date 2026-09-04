@@ -52,10 +52,22 @@ luaT_check_thread_count(struct lua_State *L, int idx)
 static int
 lbox_listen(struct lua_State *L)
 {
+	/*
+	 * Parse the uri set argument.
+	 *
+	 * We want the same behavior as in box.cfg({listen = <arg>}), especially
+	 * in how the listening sockets are closed. So, we have to handle nil,
+	 * box.NULL, '' and {} as empty uri sets. All of them except box.NULL
+	 * are already handled this way in luaT_uri_set_create(), hence the
+	 * luaL_isnull() check below.
+	 */
 	struct uri_set listen_uris;
-	if (luaT_uri_set_create(L, 1, &listen_uris) != 0) {
+	if (luaL_isnull(L, 1)) {
+		uri_set_create(&listen_uris, NULL);
+	} else if (luaT_uri_set_create(L, 1, &listen_uris) != 0) {
 		return luaT_error(L);
 	}
+
 	if (http_server_config_listen(&listen_uris) != 0) {
 		uri_set_destroy(&listen_uris);
 		return luaT_error(L);

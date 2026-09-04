@@ -140,6 +140,12 @@ bool
 uri_set_is_equal(const struct uri_set *a, const struct uri_set *b);
 
 /**
+ * Check if a uri set is empty.
+ */
+bool
+uri_set_is_nil(const struct uri_set *uri_set);
+
+/**
  * Implements snprintf-style (may be used with SNPRINT macro).
  */
 int

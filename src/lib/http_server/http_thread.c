@@ -64,29 +64,15 @@ thread_start(void *arg_1, void *arg_2)
 static int
 thread_listen_start(void *arg_1, void *arg_2)
 {
-	const struct uri *listen_uri = (const struct uri *)arg_1;
+	const struct uri_set *listen_uris = (const struct uri_set *)arg_1;
 
 	/* No previous listening socket. */
 	assert(evio_service_count(&listen_service) == 0);
 
-	/*
-	 * uri -> uri_set
-	 *
-	 * NB: uri_set_add() moves the uri, so we have to copy it.
-	 */
-	struct uri_set uri_set;
-	struct uri uri_temp;
-	uri_copy(&uri_temp, listen_uri);
-	uri_set_create(&uri_set, NULL);
-	uri_set_add(&uri_set, &uri_temp);
-	uri_destroy(&uri_temp);
-
 	/* Start listening. */
-	if (evio_service_start(&listen_service, &uri_set) != 0) {
-		uri_set_destroy(&uri_set);
+	if (evio_service_start(&listen_service, listen_uris) != 0) {
 		return -1;
 	}
-	uri_set_destroy(&uri_set);
 	say_debug("listening is started");
 
 	/*
@@ -149,12 +135,12 @@ http_thread_stop(size_t thread_id)
 /* {{{ Wrappers to call the functions above from tx */
 
 int
-http_thread_listen_start(size_t thread_id, const struct uri *listen_uri,
+http_thread_listen_start(size_t thread_id, const struct uri_set *listen_uris,
 			 struct evio_service **listen_service)
 {
 	assert(thread_id == 0);
 
-	void *arg_1 = (void *)listen_uri;
+	void *arg_1 = (void *)listen_uris;
 	void *arg_2 = (void *)listen_service;
 	return managed_thread_call(thread_id, thread_listen_start, arg_1,
 				   arg_2);

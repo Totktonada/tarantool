@@ -12,7 +12,7 @@ extern "C" {
 #endif /* __cplusplus */
 
 struct evio_service;
-struct uri;
+struct uri_set;
 
 /* To be called from tx. */
 void
@@ -28,7 +28,7 @@ http_thread_stop(size_t thread_id);
  * To be called from tx.
  */
 int
-http_thread_listen_start(size_t thread_id, const struct uri *listen_uri,
+http_thread_listen_start(size_t thread_id, const struct uri_set *listen_uris,
 			 struct evio_service **listen_service);
 
 /* To be called from tx. */
