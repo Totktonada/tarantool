@@ -415,9 +415,15 @@ _say_strerror(int errnum);
  * \sa printf()
  * \sa enum say_level
  */
+#ifdef SAY_ENABLED
+/* XXX: Remove it, it is just for debugging. */
+#define say_file_line(level, file, line, error, format, ...) ({ \
+	_say(S_INFO, file, line, error, format, ##__VA_ARGS__); })
+#else
 #define say_file_line(level, file, line, error, format, ...) ({ \
 	if (say_log_level_is_enabled(level)) \
 		_say(level, file, line, error, format, ##__VA_ARGS__); })
+#endif
 
 /**
  * Format and print a message to Tarantool log file.

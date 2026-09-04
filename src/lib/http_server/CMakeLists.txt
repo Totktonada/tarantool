@@ -7,3 +7,6 @@ add_library(
     managed_thread.c
 )
 target_link_libraries(http_server uri)
+
+# XXX: Remove it, it is just for debugging.
+target_compile_definitions(http_server PRIVATE SAY_ENABLED=1)
