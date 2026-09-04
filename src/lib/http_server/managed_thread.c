@@ -122,13 +122,13 @@ managed_thread_f(void *arg)
 	cbus_endpoint_create(&endpoint, thread_name, thread_endpoint_cb,
 			     &endpoint);
 
-	say_debug("thread is started\n");
+	say_debug("thread is started");
 	ev_run(loop(), 0);
 
 	cbus_endpoint_destroy(&endpoint, cbus_process);
 
 	cpipe_destroy(&thread->call_ret_pipe);
-	say_debug("thread is stopped\n");
+	say_debug("thread is stopped");
 	return NULL;
 }
 
