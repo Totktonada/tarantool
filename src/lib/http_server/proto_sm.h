@@ -146,7 +146,7 @@ proto_sm_result_create(struct proto_sm_result *result)
 {
 	result->consumed_bytes = 0;
 	result->written_bytes = 0;
-	result->needed_in_size = false;
+	result->needed_in_size = 0;
 	result->needed_out_size = 0;
 	result->needed_wake_up_at = -1;
 	result->finished = false;
@@ -184,13 +184,13 @@ proto_sm_perform(struct proto_sm *sm, struct proto_sm_event *event)
 	int rc = sm->vtab->perform(sm, event);
 	say_debug("proto_sm_perform: "
 		  "event.io_flags: %d; "
-		  "event.in_size: %ld; "
-		  "event.out_size: %ld; "
+		  "event.in_size: %zu; "
+		  "event.out_size: %zu; "
 		  "event.now: %f; "
-		  "sm.consumed_bytes: %ld; "
-		  "sm.written_bytes: %ld; "
-		  "sm.needed_in_size: %ld; "
-		  "sm.needed_out_size: %ld; "
+		  "sm.consumed_bytes: %zu; "
+		  "sm.written_bytes: %zu; "
+		  "sm.needed_in_size: %zu; "
+		  "sm.needed_out_size: %zu; "
 		  "sm.needed_wake_up_at: %f; "
 		  "sm.finished: %d; "
 		  "rc: %d",
