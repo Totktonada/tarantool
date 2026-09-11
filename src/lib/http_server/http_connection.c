@@ -4,6 +4,7 @@
  * Copyright 2010-2026, Tarantool AUTHORS, please see AUTHORS file.
  */
 #include "http_connection.h"
+#include "core/fiber.h"
 #include "core/iostream.h"
 #include "small/rlist.h"
 #include "xbuf.h"
