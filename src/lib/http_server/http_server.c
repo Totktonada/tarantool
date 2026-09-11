@@ -69,13 +69,19 @@ setup_thread(size_t thread_id, bool do_start)
 }
 
 static void
-teardown_thread(size_t thread_id, bool do_stop)
+teardown_thread(size_t thread_id, size_t new_thread_count, bool do_stop)
 {
 	http_thread_accept_stop(thread_id);
 
 	if (thread_id == 0) {
 		http_thread_listen_stop(thread_id);
 		state.listen_service = NULL;
+	}
+
+	if (new_thread_count == 0) {
+		http_thread_connections_stop(thread_id);
+	} else {
+		http_thread_connections_transfer(thread_id, new_thread_count - 1);
 	}
 
 	if (do_stop) {
@@ -108,7 +114,12 @@ http_server_config_thread_count(size_t thread_count)
 		size_t from = config.thread_count - 1;
 		size_t to = thread_count - 1;
 		for (size_t i = from; i != to; --i) {
-			teardown_thread(i, true);
+			/*
+			 * Transfer existing connections to other thread if
+			 * there is at least one remaining thread. Otherwise,
+			 * gracefully stop them.
+			 */
+			teardown_thread(i, thread_count, true);
 		}
 	}
 
@@ -142,7 +153,8 @@ http_server_config_listen(const struct uri_set *listen_uris)
 	}
 
 	for (size_t i = config.thread_count - 1; i != (size_t)-1; --i) {
-		teardown_thread(i, false);
+		/* Shutdown existing connections, but keep the thread. */
+		teardown_thread(i, 0, false);
 	}
 
 	if (uri_set_is_nil(&config.listen_uris)) {
@@ -173,7 +185,8 @@ http_server_shutdown(void)
 {
 	latch_lock(&reconfiguration_latch);
 	for (size_t i = config.thread_count - 1; i != (size_t)-1; --i) {
-		teardown_thread(i, true);
+		/* Shutdown existing connections and stop the thread. */
+		teardown_thread(i, 0, true);
 	}
 	latch_unlock(&reconfiguration_latch);
 

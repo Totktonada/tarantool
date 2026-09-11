@@ -12,9 +12,11 @@
 #include "core/fiber.h"
 #include "core/say.h"
 #include "tarantool_ev.h"
+#include "core/sio.h"
 #include "core/evio.h"
 #include "core/iostream.h"
 #include "managed_thread.h"
+#include "http_connection.h"
 
 /*
  * The listen service exists only in the zero thread. The accept service works
@@ -28,13 +30,34 @@ on_accept(struct evio_service *accept_service, struct iostream *io,
 	  struct sockaddr *addr, socklen_t addrlen)
 {
 	(void)accept_service;
-	(void)addr;
-	(void)addrlen;
 
-	// TODO: Start the read-write-close loop.
-	struct iostream myio;
-	iostream_move(&myio, io);
-	say_debug("accepted connection");
+	/*
+	 * TODO: If a disbalance threshold (by connections per thread or by CPU
+	 * consumption per thread) is reached, we have to pass this new
+	 * connection to another http thread to perform IO.
+	 *
+	 * First, we need to collect statistics and it should be accessible from
+	 * each thread directly (however, it is OK if it falls behind the most
+	 * actual state a bit). It is necessary to decide if we keep the
+	 * connection in this thread to perform further IO or pass it to another
+	 * thread. We want to decide without extra round trips between threads.
+	 *
+	 * It is important to don't loss a connection by passing it to a
+	 * stopping thread (or at least re-transfer such connections before an
+	 * actual thread termination).
+	 */
+
+	/*
+	 * Start the read-write-close loop.
+	 *
+	 * NB: The io object is moved.
+	 *
+	 * The connection object is owned by the http_connection module and
+	 * will be freed when its state machine reaches a terminal state.
+	 */
+	struct http_connection *con = http_connection_new();
+	http_connection_io_start_in_thread(con, io);
+	say_verbose("accepted connection from %s", sio_strfaddr(addr, addrlen));
 }
 
 static int
@@ -43,15 +66,20 @@ thread_start(void *arg_1, void *arg_2)
 	(void)arg_1;
 	(void)arg_2;
 
+	/* Create listen service. */
 	char service_name[SERVICE_NAME_MAXLEN];
 	snprintf(service_name, sizeof(service_name), "%s_listen",
 		 managed_thread_name());
 	evio_service_create(loop(), &listen_service, service_name, NULL, NULL);
 
+	/* Create accept service. */
 	snprintf(service_name, sizeof(service_name), "%s_accept",
 		 managed_thread_name());
 	evio_service_create(loop(), &accept_service, service_name, on_accept,
 			    NULL);
+
+	/* Initialize http connection subsustem within the thread. */
+	http_connection_init_in_thread();
 
 	return 0;
 }
@@ -114,6 +142,27 @@ thread_accept_stop(void *arg_1, void *arg_2)
 	return 0;
 }
 
+static int
+thread_connections_transfer(void *arg_1, void *arg_2)
+{
+	size_t max_dest_thread_id = (size_t)arg_1;
+	(void)arg_2;
+
+	/* TODO: Implement the connections transfer. */
+	(void)max_dest_thread_id;
+	return 0;
+}
+
+static int
+thread_connections_stop(void *arg_1, void *arg_2)
+{
+	(void)arg_1;
+	(void)arg_2;
+
+	/* TODO: Implement the connections stop. */
+	return 0;
+}
+
 void
 http_thread_start(size_t thread_id)
 {
@@ -161,6 +210,21 @@ void
 http_thread_accept_stop(size_t thread_id)
 {
 	managed_thread_call(thread_id, thread_accept_stop, NULL, NULL);
+}
+
+void
+http_thread_connections_transfer(size_t thread_id, size_t max_dest_thread_id)
+{
+	void *arg_1 = (void *)max_dest_thread_id;
+	void *arg_2 = NULL;
+	managed_thread_call(thread_id, thread_connections_transfer, arg_1,
+			    arg_2);
+}
+
+void
+http_thread_connections_stop(size_t thread_id)
+{
+	managed_thread_call(thread_id, thread_connections_stop, NULL, NULL);
 }
 
 /* }}} Wrappers to call the functions above from tx */

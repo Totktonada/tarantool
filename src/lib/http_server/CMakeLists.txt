@@ -5,6 +5,7 @@ add_library(
     http_thread.c
     http_connection.c
     managed_thread.c
+    proto_sm_http2.c
 )
 target_link_libraries(http_server uri)
 
