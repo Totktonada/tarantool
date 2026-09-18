@@ -126,3 +126,43 @@ g.test_index_is_rebuilt_on_recovery = function(cg)
                         {2, {1}})
     end)
 end
+
+g.test_dimension_is_validated = function(cg)
+    cg.server:exec(function()
+        local s = box.schema.space.create('dim')
+        s:format({{name = 'id', type = 'unsigned'},
+                  {name = 'vec', type = 'array'}})
+        s:create_index('pk')
+        local message = 'Vector index dimension must be between 1 and 4096'
+        for _, dimension in ipairs({0, 5000}) do
+            t.assert_error_msg_contains(message, function()
+                s:create_index('v', {type = 'vector', dimension = dimension,
+                                     unique = false, parts = {{2, 'array'}}})
+            end)
+        end
+        s:drop()
+    end)
+end
+
+g.test_vectors_of_an_embedding_size = function(cg)
+    cg.server:exec(function()
+        local s = box.schema.space.create('emb')
+        s:format({{name = 'id', type = 'unsigned'},
+                  {name = 'vec', type = 'array'}})
+        s:create_index('pk')
+        s:create_index('v', {type = 'vector', dimension = 1536,
+                             unique = false, parts = {{2, 'array'}}})
+        local function vector(shift)
+            local vec = {}
+            for i = 1, 1536 do
+                vec[i] = ((i + shift) % 11) / 11
+            end
+            return vec
+        end
+        s:insert{1, vector(0)}
+        s:insert{2, vector(5)}
+        local found = s.index.v:select({vector(0)}, {iterator = 'EQ', limit = 1})
+        t.assert_equals({#found, found[1][1]}, {1, 1})
+        s:drop()
+    end)
+end

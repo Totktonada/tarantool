@@ -959,6 +959,15 @@ memtx_space_check_index_def(struct space *space, struct index_def *index_def)
 				 "Vector index can not use a function");
 			return -1;
 		}
+		if (index_def->opts.dimension < 1 ||
+		    index_def->opts.dimension > MEMTX_VECTOR_MAX_DIMENSION) {
+			diag_set(ClientError, ER_MODIFY_INDEX,
+				 index_def->name, space_name(space),
+				 tt_sprintf("Vector index dimension must be "
+					    "between 1 and %d",
+					    MEMTX_VECTOR_MAX_DIMENSION));
+			return -1;
+		}
 		/* no furter checks of parts needed */
 		return 0;
 	case RTREE:

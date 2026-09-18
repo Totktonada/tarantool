@@ -381,8 +381,9 @@ memtx_vector_index_new(struct memtx_engine *memtx, struct index_def *def)
 	assert(def->key_def->parts[0].type == FIELD_TYPE_ARRAY);
 	assert(def->opts.is_unique == false);
 
-	// TODO: check dimension count.
-	assert(def->opts.dimension >= 1 && def->opts.dimension < 1000);
+	/* Checked by memtx_space_check_index_def(). */
+	assert(def->opts.dimension >= 1 &&
+	       def->opts.dimension <= MEMTX_VECTOR_MAX_DIMENSION);
 
 	// TODO: try different distance types.
 
