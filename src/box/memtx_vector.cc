@@ -23,13 +23,45 @@ struct memtx_vector_index {
 	usearch_index_t idx;
 };
 
+/**
+ * How many neighbours one search asks usearch for. The index API does not
+ * pass the select limit down, so this is the upper bound on what a single
+ * iterator can return.
+ */
+#define MEMTX_VECTOR_NEIGHBOURS 32
+
 struct index_vector_iterator {
 	struct iterator base;
-	uint64_t key;
-	struct key_def *pk_def;
+	/** Neighbours found by the search, nearest first. */
+	usearch_key_t keys[MEMTX_VECTOR_NEIGHBOURS];
+	/** How many of them were found. */
+	size_t count;
+	/** Position of the next neighbour to return. */
+	size_t pos;
 	/** Memory pool the iterator was allocated from. */
 	struct mempool *pool;
 };
+
+/**
+ * A usearch key is the tuple pointer itself: the index keeps no copy of the
+ * data and a search hands the tuples back directly.
+ */
+static inline usearch_key_t
+vector_index_key(struct tuple *tuple)
+{
+	return (usearch_key_t)(uintptr_t)tuple;
+}
+
+/** Report a usearch failure through the tarantool diagnostic area. */
+static int
+vector_index_diag(usearch_error_t error, const char *what)
+{
+	if (error == NULL)
+		return 0;
+	diag_set(ClientError, ER_SYSTEM,
+		 tt_sprintf("vector index: %s: %s", what, error));
+	return -1;
+}
 
 static inline int
 mp_decode_num(const char **data, uint32_t fieldno, double *ret)
@@ -125,15 +157,18 @@ index_vector_iterator_next(struct iterator *i, struct tuple **ret)
 	struct space *space;
 	struct index *index;
 	index_weak_ref_get_checked(&i->index_ref, &space, &index);
-
-	*ret = (struct tuple *) itr->key;
-	if (*ret == NULL)
-		return 0;
-
-	itr->key = 0;
 	struct txn *txn = in_txn();
-	*ret = memtx_tx_tuple_clarify(txn, space, *ret, index, 0);
 
+	while (itr->pos < itr->count) {
+		struct tuple *tuple =
+			(struct tuple *)(uintptr_t)itr->keys[itr->pos++];
+		tuple = memtx_tx_tuple_clarify(txn, space, tuple, index, 0);
+		if (tuple != NULL) {
+			*ret = tuple;
+			return 0;
+		}
+	}
+	*ret = NULL;
 	return 0;
 }
 
@@ -143,8 +178,6 @@ index_vector_iterator_free(struct iterator *i)
 	struct index_vector_iterator *itr = (struct index_vector_iterator *)i;
 	mempool_free(itr->pool, itr);
 }
-
-#define M_NEIGHBOURS 32
 
 /** Implementation of create_iterator for memtx vector index. */
 static struct iterator *
@@ -159,14 +192,35 @@ memtx_vector_index_create_iterator(struct index *base, enum iterator_type type,
 		diag_set(UnsupportedIndexFeature, base->def, "pagination");
 		return NULL;
 	}
-
-	double *vector = (double*) xcalloc(index->dimension, sizeof(double));
-	if (part_count == 0) {
-		assert(type == ITER_ALL);
-	} else if (mp_decode_vector_from_key(&vector, index->dimension,
-					     key, part_count)) {
+	/*
+	 * A vector index answers one question: which tuples are nearest to
+	 * this vector. Anything else, a full scan included, belongs to
+	 * another index of the space.
+	 */
+	if (type != ITER_EQ || part_count == 0) {
+		diag_set(UnsupportedIndexFeature, base->def,
+			 "iterator type other than EQ with a vector key");
 		return NULL;
 	}
+
+	struct region *region = &fiber()->gc;
+	size_t region_svp = region_used(region);
+	double *vector = xregion_alloc_array(region, double, index->dimension);
+	int rc = mp_decode_vector_from_key(&vector, index->dimension,
+					   key, part_count);
+	usearch_key_t keys[MEMTX_VECTOR_NEIGHBOURS];
+	usearch_distance_t distances[MEMTX_VECTOR_NEIGHBOURS];
+	usearch_error_t error = NULL;
+	size_t count = 0;
+	if (rc == 0) {
+		count = usearch_search(index->idx, vector, usearch_scalar_f64_k,
+				       MEMTX_VECTOR_NEIGHBOURS, keys, distances,
+				       &error);
+		rc = vector_index_diag(error, "search");
+	}
+	region_truncate(region, region_svp);
+	if (rc != 0)
+		return NULL;
 
 	struct index_vector_iterator *it = (struct index_vector_iterator *)
 		mempool_alloc(&memtx->iterator_pool);
@@ -181,29 +235,29 @@ memtx_vector_index_create_iterator(struct index *base, enum iterator_type type,
 	it->base.next_internal = index_vector_iterator_next;
 	it->base.next = memtx_iterator_next;
 	it->base.position = generic_iterator_position;
-	it->base.free =index_vector_iterator_free;
-
-	usearch_error_t error = NULL;
-	switch (type) {
-	case ITER_EQ:
-	{
-		usearch_key_t found_keys[M_NEIGHBOURS];
-		usearch_distance_t found_distances[M_NEIGHBOURS];
-
-		size_t matches = usearch_search(
-			index->idx, vector, usearch_scalar_f64_k, M_NEIGHBOURS,
-			found_keys, found_distances, &error);
-
-		if (matches > 0)
-			it->key = found_keys[0];
-
-		break;
-	}
-	default:
-		unreachable();
-	}
+	it->base.free = index_vector_iterator_free;
+	memcpy(it->keys, keys, count * sizeof(keys[0]));
+	it->count = count;
+	it->pos = 0;
 
 	return (struct iterator *)it;
+}
+
+/** usearch does not grow on its own: make room before adding a vector. */
+static int
+memtx_vector_index_reserve_more(struct memtx_vector_index *index)
+{
+	usearch_error_t error = NULL;
+	size_t size = usearch_size(index->idx, &error);
+	if (vector_index_diag(error, "size") != 0)
+		return -1;
+	size_t capacity = usearch_capacity(index->idx, &error);
+	if (vector_index_diag(error, "capacity") != 0)
+		return -1;
+	if (size < capacity)
+		return 0;
+	usearch_reserve(index->idx, capacity < 64 ? 64 : capacity * 2, &error);
+	return vector_index_diag(error, "reserve");
 }
 
 static int
@@ -213,40 +267,63 @@ memtx_vector_index_replace(struct index *base, struct tuple *old_tuple,
 {
 	(void)mode;
 	struct memtx_vector_index *index = (struct memtx_vector_index *)base;
+	usearch_error_t error = NULL;
 
-	/* TODO: support ordering by distance? */
+	/* The index is unordered: there is no successor to report. */
 	*successor = NULL;
 
-	double *vector = (double*) xcalloc(index->dimension, sizeof(double));
-	usearch_error_t error = NULL;
-	struct key_def *pk_def = base->def->pk_def;
-	uint32_t pk_size;
-	if (new_tuple) {
-		/*const char *pk_key_mp = tuple_extract_key(new_tuple, pk_def,
-							MULTIKEY_NONE, &pk_size);
-		(void)pk_key_mp;
-		double pk_key = 0;
-		mp_decode_array(&pk_key_mp);
-		mp_decode_num(&pk_key_mp, 0, &pk_key);
-		*/
-		uint64_t key = *((uint64_t*) &new_tuple);
-		if (extract_vector(&vector, new_tuple, base->def) != 0)
-			return -1;
-		usearch_add(index->idx, key, vector, usearch_scalar_f64_k, &error);
-	}
-	if (old_tuple) {
-		const char *pk_key_ = tuple_extract_key(old_tuple, pk_def,
-							MULTIKEY_NONE, &pk_size);
-		uint64_t pk_key = *((uint64_t*) &pk_key_);
-		(void)pk_key;
+	struct region *region = &fiber()->gc;
+	size_t region_svp = region_used(region);
+	double *vector = xregion_alloc_array(region, double, index->dimension);
 
-		if (extract_vector(&vector, old_tuple, base->def) != 0)
-			return -1;
-		if (false) /* TODO */
-			old_tuple = NULL;
+	/*
+	 * Drop the old vector first. The other order would leave the search
+	 * able to return a tuple that is already gone if the addition fails.
+	 */
+	if (old_tuple != NULL) {
+		usearch_remove(index->idx, vector_index_key(old_tuple), &error);
+		if (vector_index_diag(error, "remove") != 0)
+			goto fail;
 	}
+	if (new_tuple != NULL) {
+		if (extract_vector(&vector, new_tuple, base->def) != 0)
+			goto fail;
+		if (memtx_vector_index_reserve_more(index) != 0)
+			goto fail;
+		usearch_add(index->idx, vector_index_key(new_tuple), vector,
+			    usearch_scalar_f64_k, &error);
+		if (vector_index_diag(error, "add") != 0)
+			goto fail;
+	}
+
+	region_truncate(region, region_svp);
 	*result = old_tuple;
 	return 0;
+fail:
+	region_truncate(region, region_svp);
+	return -1;
+}
+
+static ssize_t
+memtx_vector_index_size(struct index *base)
+{
+	struct memtx_vector_index *index = (struct memtx_vector_index *)base;
+	usearch_error_t error = NULL;
+	size_t size = usearch_size(index->idx, &error);
+	if (vector_index_diag(error, "size") != 0)
+		return -1;
+	return size;
+}
+
+static ssize_t
+memtx_vector_index_bsize(struct index *base)
+{
+	struct memtx_vector_index *index = (struct memtx_vector_index *)base;
+	usearch_error_t error = NULL;
+	size_t bsize = usearch_memory_usage(index->idx, &error);
+	if (vector_index_diag(error, "memory usage") != 0)
+		return -1;
+	return bsize;
 }
 
 static void
@@ -268,8 +345,8 @@ static const struct index_vtab memtx_vector_index_vtab_base = {
 	/* .depends_on_pk = */ generic_index_depends_on_pk,
 	/* .def_change_requires_rebuild = */
 		generic_index_def_change_requires_rebuild,
-	/* .size = */ generic_index_size,
-	/* .bsize = */ generic_index_bsize,
+	/* .size = */ memtx_vector_index_size,
+	/* .bsize = */ memtx_vector_index_bsize,
 	/* .quantile = */ generic_index_quantile,
 	/* .min = */ generic_index_min,
 	/* .max = */ generic_index_max,
@@ -322,8 +399,10 @@ memtx_vector_index_new(struct memtx_engine *memtx, struct index_def *def)
 
 	usearch_error_t error = NULL;
 	index->idx = usearch_init(&opts, &error);
-	size_t vectors_count = 1000;
-	usearch_reserve(index->idx, vectors_count, &error);
+	if (vector_index_diag(error, "init") != 0) {
+		free(index);
+		return NULL;
+	}
 
 	index->dimension = def->opts.dimension;
 	return &index->base;

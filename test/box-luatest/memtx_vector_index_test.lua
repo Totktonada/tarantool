@@ -1,0 +1,128 @@
+local server = require('luatest.server')
+local t = require('luatest')
+
+local g = t.group()
+
+g.before_all(function(cg)
+    cg.server = server:new()
+    cg.server:start()
+end)
+
+g.after_all(function(cg)
+    cg.server:drop()
+end)
+
+g.before_each(function(cg)
+    cg.server:exec(function()
+        local s = box.schema.space.create('t')
+        s:format({{name = 'id', type = 'unsigned'},
+                  {name = 'vec', type = 'array'}})
+        s:create_index('pk')
+        s:create_index('v', {type = 'vector', dimension = 3,
+                             unique = false, parts = {{2, 'array'}}})
+    end)
+end)
+
+g.after_each(function(cg)
+    cg.server:exec(function()
+        if box.space.t ~= nil then
+            box.space.t:drop()
+        end
+    end)
+end)
+
+g.test_search_returns_nearest_first = function(cg)
+    cg.server:exec(function()
+        local function neighbours(key, opts)
+            local ids = {}
+            for _, tuple in ipairs(box.space.t.index.v:select(key, opts)) do
+                table.insert(ids, tuple[1])
+            end
+            return ids
+        end
+        local s = box.space.t
+        s:insert{1, {1, 0, 0}}
+        s:insert{2, {0.9, 0.1, 0}}
+        s:insert{3, {0, 1, 0}}
+        s:insert{4, {0, 0, 1}}
+        local ids = neighbours({{1, 0, 0}}, {iterator = 'EQ'})
+        t.assert_equals({ids[1], ids[2], #ids}, {1, 2, 4})
+        t.assert_equals(#neighbours({{1, 0, 0}}, {iterator = 'EQ', limit = 2}), 2)
+        t.assert_equals({s.index.v:len(), s.index.v:bsize() > 0}, {4, true})
+    end)
+end
+
+g.test_delete_and_update_are_visible = function(cg)
+    cg.server:exec(function()
+        local function neighbours(key, opts)
+            local ids = {}
+            for _, tuple in ipairs(box.space.t.index.v:select(key, opts)) do
+                table.insert(ids, tuple[1])
+            end
+            return ids
+        end
+        local s = box.space.t
+        s:insert{1, {1, 0, 0}}
+        s:insert{2, {0.9, 0.1, 0}}
+        s:insert{3, {0, 1, 0}}
+
+        s:delete{2}
+        t.assert_equals({neighbours({{1, 0, 0}}, {iterator = 'EQ'}),
+                         s.index.v:len()}, {{1, 3}, 2})
+
+        s:replace{3, {0.99, 0.01, 0}}
+        t.assert_equals(neighbours({{1, 0, 0}}, {iterator = 'EQ'}), {1, 3})
+    end)
+end
+
+g.test_unsupported_iterators_are_reported = function(cg)
+    cg.server:exec(function()
+        local v = box.space.t.index.v
+        local message = "does not support requested iterator type"
+        t.assert_error_msg_contains(message, function() v:select() end)
+        t.assert_error_msg_contains(message, function()
+            v:select({{1, 0, 0}}, {iterator = 'GT'})
+        end)
+    end)
+end
+
+g.test_index_grows_past_its_initial_reserve = function(cg)
+    cg.server:exec(function()
+        local function neighbours(key, opts)
+            local ids = {}
+            for _, tuple in ipairs(box.space.t.index.v:select(key, opts)) do
+                table.insert(ids, tuple[1])
+            end
+            return ids
+        end
+        local s = box.space.t
+        for i = 1, 500 do
+            s:insert{i, {i / 500, 1 - i / 500, 0}}
+        end
+        t.assert_equals({s.index.v:len(), #neighbours({{1, 0, 0}},
+                                                      {iterator = 'EQ'})},
+                        {500, 32})
+    end)
+end
+
+g.test_index_is_rebuilt_on_recovery = function(cg)
+    cg.server:exec(function()
+        local s = box.space.t
+        s:insert{1, {1, 0, 0}}
+        s:insert{2, {0, 1, 0}}
+        box.snapshot()
+    end)
+    cg.server:restart()
+    cg.server:exec(function()
+        local function neighbours(key, opts)
+            local ids = {}
+            for _, tuple in ipairs(box.space.t.index.v:select(key, opts)) do
+                table.insert(ids, tuple[1])
+            end
+            return ids
+        end
+        t.assert_equals({box.space.t.index.v:len(),
+                         neighbours({{1, 0, 0}}, {iterator = 'EQ', limit = 1})},
+                        {2, {1}})
+    end)
+end
