@@ -4,6 +4,7 @@
 #include <small/mempool.h>
 
 #include "index.h"
+#include "memtx_index.h"
 #include "errinj.h"
 #include "fiber.h"
 #include "trivia/util.h"
@@ -87,8 +88,12 @@ extract_vector(double **vector, struct tuple *tuple,
 
 static int
 memtx_vector_index_get_internal(struct index *base, const char *key,
-			       uint32_t part_count, struct tuple **result)
+			       uint32_t part_count, struct tuple **result,
+			       bool is_rw)
 {
+	/* The body below is a stub, so the read-write flavour of the MVCC
+	 * clarification has nothing to apply to yet. */
+	(void)is_rw;
 	struct memtx_vector_index *index = (struct memtx_vector_index *)base;
 
 	double *vector;
@@ -253,7 +258,7 @@ memtx_vector_index_destroy(struct index *base)
 	free(index);
 }
 
-static const struct index_vtab memtx_vector_index_vtab = {
+static const struct index_vtab memtx_vector_index_vtab_base = {
 	/* .destroy = */ memtx_vector_index_destroy,
 	/* .commit_create = */ generic_index_commit_create,
 	/* .abort_create = */ generic_index_abort_create,
@@ -270,23 +275,27 @@ static const struct index_vtab memtx_vector_index_vtab = {
 	/* .max = */ generic_index_max,
 	/* .random = */ generic_index_random,
 	/* .count = */ generic_index_count,
-	/* .get_internal = */ memtx_vector_index_get_internal,
 	/* .get = */ memtx_index_get,
-	/* .replace = */ memtx_vector_index_replace,
 	/* .create_iterator = */ memtx_vector_index_create_iterator,
 	/* .create_iterator_with_offset = */
 	generic_index_create_iterator_with_offset,
 	/* .create_arrow_stream = */ generic_index_create_arrow_stream,
 	/* .create_read_view = */ generic_index_create_read_view,
+	/* .info = */ generic_index_info,
 	/* .stat = */ generic_index_stat,
 	/* .compact = */ generic_index_compact,
 	/* .reset_stat = */ generic_index_reset_stat,
-	/* .begin_build = */ generic_index_begin_build,
-	/* .reserve = */ generic_index_reserve,
-	/* .build_next = */ generic_index_build_next,
-	/* .end_build = */ generic_index_end_build,
 };
 
+static const struct memtx_index_vtab memtx_vector_index_vtab = {
+	/* .base = */ memtx_vector_index_vtab_base,
+	/* .get_internal = */ memtx_vector_index_get_internal,
+	/* .replace = */ memtx_vector_index_replace,
+	/* .begin_build = */ generic_memtx_index_begin_build,
+	/* .reserve = */ generic_memtx_index_reserve,
+	/* .build_next = */ generic_memtx_index_build_next,
+	/* .end_build = */ generic_memtx_index_end_build,
+};
 struct index *
 memtx_vector_index_new(struct memtx_engine *memtx, struct index_def *def)
 {
@@ -303,15 +312,13 @@ memtx_vector_index_new(struct memtx_engine *memtx, struct index_def *def)
 	struct memtx_vector_index *index =
 		(struct memtx_vector_index *)xcalloc(1, sizeof(*index));
 	index_create(&index->base, (struct engine *)memtx,
-		     &memtx_vector_index_vtab, def);
+		     &memtx_vector_index_vtab.base, def);
 
-	usearch_init_options_t opts = {
-		.metric_kind = usearch_metric_cos_k,
-		.quantization = usearch_scalar_f64_k,
-		.dimensions = (size_t) def->opts.dimension,
-		.expansion_add = 0, // for defaults
-		.expansion_search = 0 // for defaults
-	};
+	/* Zero first: the rest of the options mean "use the default". */
+	usearch_init_options_t opts = {};
+	opts.metric_kind = usearch_metric_cos_k;
+	opts.quantization = usearch_scalar_f64_k;
+	opts.dimensions = (size_t)def->opts.dimension;
 
 	usearch_error_t error = NULL;
 	index->idx = usearch_init(&opts, &error);
