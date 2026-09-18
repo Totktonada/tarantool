@@ -191,6 +191,9 @@ endif()
 add_library(xlog STATIC ${xlog_sources})
 target_link_libraries(xlog core box_error digest ${ZSTD_LIBRARIES})
 
+include_directories(${PROJECT_SOURCE_DIR}/third_party/USearch/include)
+include_directories(${PROJECT_SOURCE_DIR}/third_party/USearch/fp16/include)
+
 set(box_sources
     allocator.cc
     memtx_allocator.cc
