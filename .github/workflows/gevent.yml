@@ -1,0 +1,104 @@
+# DO NOT MERGE: measures what installing test-run's Python dependencies
+# costs on the FreeBSD and macOS jobs' runners, each package in a step of its
+# own.
+name: gevent
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  freebsd:
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    # pkg: binary packages. pip: PyPI has no FreeBSD wheels, so it builds
+    # gevent (and greenlet, zope.interface) from source.
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [pkg, pip]
+        run: [1, 2, 3, 4, 5]
+
+    runs-on: ubuntu-26.04
+
+    timeout-minutes: 30
+
+    steps:
+      - name: Start FreeBSD VM
+        uses: cross-platform-actions/action@v1
+        with:
+          operating_system: freebsd
+          version: '15.1'
+          cpu_count: 4
+
+      # The FreeBSD job fetches the catalogue in its own package step; keep
+      # it out of the steps below.
+      - name: Update the package catalogue
+        shell: cpa.sh {0}
+        run: sudo pkg update
+
+      - name: Install Python
+        shell: cpa.sh {0}
+        run: |
+          if [ ${{ matrix.method }} = pkg ]; then
+            sudo pkg install -y python312
+          else
+            sudo pkg install -y py312-pip
+          fi
+
+      - name: Install gevent
+        shell: cpa.sh {0}
+        run: |
+          if [ ${{ matrix.method }} = pkg ]; then
+            sudo pkg install -y py312-gevent
+          else
+            python3.12 -m pip install --user --break-system-packages gevent
+          fi
+
+      - name: Install PyYAML
+        shell: cpa.sh {0}
+        run: |
+          if [ ${{ matrix.method }} = pkg ]; then
+            sudo pkg install -y py312-pyyaml
+          else
+            python3.12 -m pip install --user --break-system-packages pyyaml
+          fi
+
+      - name: Check
+        shell: cpa.sh {0}
+        run: |
+          python3.12 -c 'import gevent, yaml; print(gevent.__version__, yaml.__version__)'
+
+  macos:
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 15
+
+    steps:
+      # Homebrew's Python is externally managed (PEP 668), and Homebrew has
+      # no gevent formula: PyPI's wheels, in a venv.
+      - name: Create a venv
+        run: python3 -m venv ~/venv
+
+      - name: Install gevent
+        run: ~/venv/bin/pip install gevent
+
+      - name: Install PyYAML
+        run: ~/venv/bin/pip install pyyaml
+
+      - name: Check
+        run: |
+          ~/venv/bin/python -c 'import gevent, yaml; print(gevent.__version__, yaml.__version__)'
