@@ -1,0 +1,99 @@
+name: macos-harness
+
+on: [push, pull_request]
+
+jobs:
+  macos-harness:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: several runs of the same job show the noise in timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        order: ['ctest first', 'test-run first']
+        run: [1, 2, 3]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 30
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # test-run.py needs gevent and PyYAML. Homebrew's Python is externally
+      # managed (PEP 668) and Homebrew has no gevent: PyPI's wheels in a venv.
+      - name: Install dependencies
+        run: |
+          python3 -m venv "$HOME/venv"
+          "$HOME/venv/bin/pip" install gevent pyyaml
+          echo "$HOME/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build .
+
+      # DO NOT MERGE: both harnesses in one job -- the same machine, the same
+      # tests, the same parallelism (test-run's default, 2 x CPUs) -- and the
+      # order alternates between jobs.
+      #
+      # Excluded from both: http_client_test hangs here under test-run;
+      # http_client_http_version_test is unstable on macOS (gh-12587);
+      # protobuf_module_test and ulid_test hang under ctest (gh-11728); the
+      # gh_8613 tests never ran under ctest here; test-run runs rope_stress
+      # only with --long.
+      - name: Run tests with ctest
+        if: matrix.order == 'ctest first'
+        run: |
+          ctest                                       \
+            --no-tests=error                          \
+            --output-on-failure                       \
+            --timeout 120                             \
+            -j $((2 * $(sysctl -n hw.logicalcpu)))    \
+            -L 'tarantool-unit|app-luatest'           \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|ulid_test|gh_8613|rope_stress'
+
+      - name: Run tests with test-run
+        if: ${{ !cancelled() }}
+        run: |
+          ./test/test-run.py --force                  \
+            --exclude http_client_test                \
+            --exclude http_client_http_version        \
+            --exclude protobuf_module_test            \
+            --exclude ulid_test                       \
+            --exclude gh_8613                         \
+            unit/ app-luatest/
+
+      - name: Run tests with ctest
+        if: ${{ !cancelled() && matrix.order == 'test-run first' }}
+        run: |
+          ctest                                       \
+            --no-tests=error                          \
+            --output-on-failure                       \
+            --timeout 120                             \
+            -j $((2 * $(sysctl -n hw.logicalcpu)))    \
+            -L 'tarantool-unit|app-luatest'           \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|ulid_test|gh_8613|rope_stress'
+
+      - name: Upload failed test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          # DO NOT MERGE: an artifact name is unique within a workflow run.
+          name: macos-harness-${{ strategy.job-index }}
+          retention-days: 21
+          path: /tmp/t/artifacts
