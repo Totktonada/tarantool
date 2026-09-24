@@ -84,9 +84,9 @@ jobs:
       #
       # protobuf_module_test is known to be unstable under ctest (gh-11728).
       #
-      # gh_8613_centralized_config_options_test.lua and
-      # gh_8613_new_cli_behaviour_test.lua are likely the same; re-test after
-      # gh-11728.
+      # gh_8613_centralized_config_options_test.lua,
+      # gh_8613_new_cli_behaviour_test.lua and ulid_test.lua are likely the
+      # same; re-test after gh-11728.
       - name: Run app-luatest
         shell: cpa.sh {0}
         run: |
@@ -96,4 +96,4 @@ jobs:
             --timeout 120       \
             -j $(nproc)         \
             -L app-luatest      \
-            -E 'http_client_test|protobuf_module_test|gh_8613'
+            -E 'http_client_test|protobuf_module_test|gh_8613|ulid_test'
