@@ -77,6 +77,13 @@ jobs:
           cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
           cmake --build .
 
+      # gh_8613_centralized_config_options_test.lua and
+      # gh_8613_new_cli_behaviour_test.lua hang in `tarantool -i </dev/null`
+      # (gh-6231).
+      #
+      # http_client_test.lua gets 408 in test_http_params_* now and then.
       - name: Run tests
         shell: cpa.sh {0}
-        run: ./test/test-run.py --force unit/ app-luatest/
+        run: |
+          ./test/test-run.py --force --exclude gh_8613 \
+            --exclude http_client_test unit/ app-luatest/

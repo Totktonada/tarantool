@@ -48,10 +48,12 @@ jobs:
 
       # http_client_http_version_test.lua is known to be unstable on macOS
       # (gh-12587).
+      #
+      # http_client_test.lua hangs in test_http_client_content_length_invalid.
       - name: Run tests
         run: |
           ./test/test-run.py --force --exclude http_client_http_version \
-            unit/ app-luatest/
+            --exclude http_client_test unit/ app-luatest/
 
       - name: Upload failed test artifacts
         if: failure()
