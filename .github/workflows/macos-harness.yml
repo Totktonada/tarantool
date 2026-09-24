@@ -1,6 +1,7 @@
 name: macos-harness
 
-on: [push, pull_request]
+# DO NOT MERGE: only the -j comparison runs on this push.
+on: workflow_dispatch
 
 jobs:
   macos-harness:
