@@ -1,0 +1,82 @@
+name: freebsd-test-run
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  freebsd-test-run:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: several runs of the same job show the noise in timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5]
+
+    # ubuntu-latest will be 26.04 soon. Switch ahead of time.
+    #
+    # https://github.com/actions/runner-images/issues/14748
+    runs-on: ubuntu-26.04
+
+    timeout-minutes: 15
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Start FreeBSD VM
+        uses: cross-platform-actions/action@v1
+        with:
+          operating_system: freebsd
+          version: '15.1'
+          # The default is 2: the CPU count of a standard Linux runner when
+          # the option appeared (2023) and of a private repository's runner
+          # now. A public repository's runner has 4.
+          cpu_count: 4
+
+      # FreeBSD offers only /dev/fd/{0,1,2} by default.
+      #
+      # luatest uses /dev/fd/* to point tarantool's logger to luatest's pipe.
+      # If the file to write doesn't exist, the logger process fails:
+      #
+      #  | /bin/sh: cannot create /dev/fd/15: Operation not supported
+      #
+      # Usually it happens in the background and is harmless, but sometimes the
+      # logger fails fast enough, so log_pipe_init() sees it, reports up and
+      # tarantool initialization fails.
+      - name: Mount fdescfs
+        shell: cpa.sh {0}
+        run: sudo mount -t fdescfs null /dev/fd
+
+      # test-run.py needs Python with gevent and PyYAML.
+      - name: Install dependencies
+        shell: cpa.sh {0}
+        run: |
+          sudo pkg install -y cmake-core git-lite icu ninja readline \
+            python3 py312-gevent py312-pyyaml
+
+      - name: Build
+        shell: cpa.sh {0}
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build .
+
+      - name: Run tests
+        shell: cpa.sh {0}
+        run: cd test && ./test-run.py --force unit/ app-luatest/

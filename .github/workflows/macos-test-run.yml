@@ -1,0 +1,63 @@
+name: macos-test-run
+
+on: [push, pull_request]
+
+jobs:
+  macos-test-run:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: several runs of the same job show the noise in timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 15
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # test-run.py needs gevent and PyYAML. Homebrew's Python is externally
+      # managed (PEP 668) and Homebrew has no gevent: PyPI's wheels in a venv.
+      - name: Install dependencies
+        run: |
+          python3 -m venv "$HOME/venv"
+          "$HOME/venv/bin/pip" install gevent pyyaml
+          echo "$HOME/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build .
+
+      # http_client_http_version_test.lua is known to be unstable on macOS
+      # (gh-12587).
+      - name: Run tests
+        run: |
+          cd test && ./test-run.py --force --exclude http_client_http_version \
+            unit/ app-luatest/
+
+      - name: Upload failed test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          # DO NOT MERGE: an artifact name is unique within a workflow run.
+          name: macos-test-run-${{ matrix.run }}
+          retention-days: 21
+          path: /tmp/t/artifacts
