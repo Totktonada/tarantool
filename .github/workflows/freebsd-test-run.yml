@@ -79,4 +79,4 @@ jobs:
 
       - name: Run tests
         shell: cpa.sh {0}
-        run: cd test && ./test-run.py --force unit/ app-luatest/
+        run: ./test/test-run.py --force unit/ app-luatest/

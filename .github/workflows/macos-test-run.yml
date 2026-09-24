@@ -50,7 +50,7 @@ jobs:
       # (gh-12587).
       - name: Run tests
         run: |
-          cd test && ./test-run.py --force --exclude http_client_http_version \
+          ./test/test-run.py --force --exclude http_client_http_version \
             unit/ app-luatest/
 
       - name: Upload failed test artifacts
