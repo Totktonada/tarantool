@@ -1,6 +1,7 @@
 name: macos-test-run
 
-on: [push, pull_request]
+# DO NOT MERGE: only the ctest/test-run comparison runs on this push.
+on: workflow_dispatch
 
 jobs:
   macos-test-run:
