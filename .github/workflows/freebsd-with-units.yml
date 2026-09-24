@@ -74,7 +74,7 @@ jobs:
         shell: cpa.sh {0}
         run: |
           cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
-          cmake --build . --target tarantool tarantool-unit-deps app-luatest-deps
+          cmake --build .
 
       # A unit test with a .result file is run by test-run.py even under ctest
       # (see create_unit_test() in test/unit/CMakeLists.txt), and test-run.py

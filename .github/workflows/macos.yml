@@ -38,7 +38,7 @@ jobs:
       - name: Build
         run: |
           cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
-          cmake --build . --target tarantool app-luatest-deps
+          cmake --build .
 
       # Use ctest (and not the usual test-run.py harness) to reduce the list of
       # dependencies (in particular, test-run.py needs gevent).
