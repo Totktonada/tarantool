@@ -1,0 +1,130 @@
+name: macos-jobs
+
+on: [push, pull_request]
+
+jobs:
+  macos-jobs:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: several runs of the same job show the noise in timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        order: ['CPUs first', '2 x CPUs first']
+        run: [1, 2, 3]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 30
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # test-run.py needs gevent and PyYAML. Homebrew's Python is externally
+      # managed (PEP 668) and Homebrew has no gevent: PyPI's wheels in a venv.
+      - name: Install dependencies
+        run: |
+          python3 -m venv "$HOME/venv"
+          "$HOME/venv/bin/pip" install gevent pyyaml
+          echo "$HOME/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build .
+
+      # DO NOT MERGE: test-run at -j CPUs and at 2 x CPUs (its default) in one
+      # job -- the same machine, the same tests -- suite by suite and both at
+      # once; which goes first alternates between jobs.
+      #
+      # Excluded: http_client_test hangs here under
+      # test-run; http_client_http_version_test is unstable on macOS
+      # (gh-12587).
+      - name: 'test-run -j CPUs: unit/'
+        if: ${{ !cancelled() && matrix.order == 'CPUs first' }}
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            unit/
+
+      - name: 'test-run -j 2 x CPUs: unit/'
+        if: ${{ !cancelled() }}
+        run: |
+          ./test/test-run.py --force -j $((2 * $(sysctl -n hw.logicalcpu)))  \
+            unit/
+
+      - name: 'test-run -j CPUs: unit/'
+        if: ${{ !cancelled() && matrix.order == '2 x CPUs first' }}
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            unit/
+
+      - name: 'test-run -j CPUs: app-luatest/'
+        if: ${{ !cancelled() && matrix.order == 'CPUs first' }}
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            --exclude http_client_test                              \
+            --exclude http_client_http_version                      \
+            app-luatest/
+
+      - name: 'test-run -j 2 x CPUs: app-luatest/'
+        if: ${{ !cancelled() }}
+        run: |
+          ./test/test-run.py --force -j $((2 * $(sysctl -n hw.logicalcpu)))  \
+            --exclude http_client_test                                       \
+            --exclude http_client_http_version                               \
+            app-luatest/
+
+      - name: 'test-run -j CPUs: app-luatest/'
+        if: ${{ !cancelled() && matrix.order == '2 x CPUs first' }}
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            --exclude http_client_test                              \
+            --exclude http_client_http_version                      \
+            app-luatest/
+
+      - name: 'test-run -j CPUs: unit/ app-luatest/'
+        if: ${{ !cancelled() && matrix.order == 'CPUs first' }}
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            --exclude http_client_test                              \
+            --exclude http_client_http_version                      \
+            unit/ app-luatest/
+
+      - name: 'test-run -j 2 x CPUs: unit/ app-luatest/'
+        if: ${{ !cancelled() }}
+        run: |
+          ./test/test-run.py --force -j $((2 * $(sysctl -n hw.logicalcpu)))  \
+            --exclude http_client_test                                       \
+            --exclude http_client_http_version                               \
+            unit/ app-luatest/
+
+      - name: 'test-run -j CPUs: unit/ app-luatest/'
+        if: ${{ !cancelled() && matrix.order == '2 x CPUs first' }}
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            --exclude http_client_test                              \
+            --exclude http_client_http_version                      \
+            unit/ app-luatest/
+
+      - name: Upload failed test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          # DO NOT MERGE: an artifact name is unique within a workflow run.
+          name: macos-jobs-${{ strategy.job-index }}
+          retention-days: 21
+          path: /tmp/t/artifacts

@@ -1,0 +1,89 @@
+name: macos-e2e
+
+on: [push, pull_request]
+
+jobs:
+  macos-e2e:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: the PR's job as it is against the test-run route at the
+    # same parallelism (-j CPUs), five runs each.
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [pr, test-run]
+        run: [1, 2, 3, 4, 5]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 30
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # test-run.py needs gevent and PyYAML. Homebrew's Python is externally
+      # managed (PEP 668) and Homebrew has no gevent: PyPI's wheels in a venv.
+      - name: Install dependencies
+        if: matrix.variant == 'test-run'
+        run: |
+          python3 -m venv "$HOME/venv"
+          "$HOME/venv/bin/pip" install gevent pyyaml
+          echo "$HOME/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        if: matrix.variant == 'pr'
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build . --target tarantool app-luatest-deps
+
+      - name: Build
+        if: matrix.variant == 'test-run'
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build .
+
+      # The PR's exclusions, with ulid_test (gh-11728) as in its FIXUP.
+      - name: Run app-luatest
+        if: matrix.variant == 'pr'
+        run: |
+          ctest                            \
+            --no-tests=error               \
+            --output-on-failure            \
+            --timeout 120                  \
+            -j $(sysctl -n hw.logicalcpu)  \
+            -L app-luatest                 \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|gh_8613|ulid_test'
+
+      # The test-run route's exclusions: http_client_test hangs here under
+      # test-run; http_client_http_version_test is unstable on macOS
+      # (gh-12587).
+      - name: Run tests
+        if: matrix.variant == 'test-run'
+        run: |
+          ./test/test-run.py --force -j $(sysctl -n hw.logicalcpu)  \
+            --exclude http_client_test                              \
+            --exclude http_client_http_version                      \
+            unit/ app-luatest/
+
+      - name: Upload failed test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          # DO NOT MERGE: an artifact name is unique within a workflow run.
+          name: macos-e2e-${{ strategy.job-index }}
+          retention-days: 21
+          path: /tmp/t/artifacts
