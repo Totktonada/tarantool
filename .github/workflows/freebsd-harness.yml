@@ -78,16 +78,16 @@ jobs:
           cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
           cmake --build .
 
-      # DO NOT MERGE: both harnesses in one job -- the same machine, the same
-      # tests, the same parallelism (test-run's default, 2 x CPUs) -- and the
-      # order alternates between jobs.
+      # DO NOT MERGE: both harnesses in one job, suite by suite -- the same
+      # machine, the same tests, the same parallelism (test-run's default, 2 x
+      # CPUs) -- and which one goes first alternates between jobs.
       #
       # Excluded from both: the gh_8613 tests hang in `tarantool -i </dev/null`
       # (gh-6231); http_client_test failed with 408 instead of 200 in 2 of 10
-      # test-run runs; protobuf_module_test and ulid_test hang under ctest
-      # (gh-11728); test-run runs rope_stress only with --long.
-      - name: Run tests with ctest
-        if: matrix.order == 'ctest first'
+      # test-run runs; protobuf_module_test, ulid_test and uri_test hang under
+      # ctest (gh-11728); test-run runs rope_stress only with --long.
+      - name: 'ctest: unit/'
+        if: ${{ !cancelled() && matrix.order == 'ctest first' }}
         shell: cpa.sh {0}
         run: |
           ctest                                   \
@@ -95,21 +95,17 @@ jobs:
             --output-on-failure                   \
             --timeout 120                         \
             -j $((2 * $(nproc)))                  \
-            -L 'tarantool-unit|app-luatest'       \
-            -E 'gh_8613|http_client_test|protobuf_module_test|ulid_test|rope_stress'
+            -L tarantool-unit                     \
+            -E 'rope_stress'
 
-      - name: Run tests with test-run
+      - name: 'test-run: unit/'
         if: ${{ !cancelled() }}
         shell: cpa.sh {0}
         run: |
           ./test/test-run.py --force              \
-            --exclude gh_8613                     \
-            --exclude http_client_test            \
-            --exclude protobuf_module_test        \
-            --exclude ulid_test                   \
-            unit/ app-luatest/
+            unit/
 
-      - name: Run tests with ctest
+      - name: 'ctest: unit/'
         if: ${{ !cancelled() && matrix.order == 'test-run first' }}
         shell: cpa.sh {0}
         run: |
@@ -118,5 +114,41 @@ jobs:
             --output-on-failure                   \
             --timeout 120                         \
             -j $((2 * $(nproc)))                  \
-            -L 'tarantool-unit|app-luatest'       \
-            -E 'gh_8613|http_client_test|protobuf_module_test|ulid_test|rope_stress'
+            -L tarantool-unit                     \
+            -E 'rope_stress'
+
+      - name: 'ctest: app-luatest/'
+        if: ${{ !cancelled() && matrix.order == 'ctest first' }}
+        shell: cpa.sh {0}
+        run: |
+          ctest                                   \
+            --no-tests=error                      \
+            --output-on-failure                   \
+            --timeout 120                         \
+            -j $((2 * $(nproc)))                  \
+            -L app-luatest                        \
+            -E 'gh_8613|http_client_test|protobuf_module_test|ulid_test|uri_test'
+
+      - name: 'test-run: app-luatest/'
+        if: ${{ !cancelled() }}
+        shell: cpa.sh {0}
+        run: |
+          ./test/test-run.py --force              \
+            --exclude gh_8613                     \
+            --exclude http_client_test            \
+            --exclude protobuf_module_test        \
+            --exclude ulid_test                   \
+            --exclude uri_test                    \
+            app-luatest/
+
+      - name: 'ctest: app-luatest/'
+        if: ${{ !cancelled() && matrix.order == 'test-run first' }}
+        shell: cpa.sh {0}
+        run: |
+          ctest                                   \
+            --no-tests=error                      \
+            --output-on-failure                   \
+            --timeout 120                         \
+            -j $((2 * $(nproc)))                  \
+            -L app-luatest                        \
+            -E 'gh_8613|http_client_test|protobuf_module_test|ulid_test|uri_test'

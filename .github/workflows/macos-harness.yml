@@ -47,38 +47,33 @@ jobs:
           cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
           cmake --build .
 
-      # DO NOT MERGE: both harnesses in one job -- the same machine, the same
-      # tests, the same parallelism (test-run's default, 2 x CPUs) -- and the
-      # order alternates between jobs.
+      # DO NOT MERGE: both harnesses in one job, suite by suite -- the same
+      # machine, the same tests, the same parallelism (test-run's default, 2 x
+      # CPUs) -- and which one goes first alternates between jobs.
       #
       # Excluded from both: http_client_test hangs here under test-run;
       # http_client_http_version_test is unstable on macOS (gh-12587);
-      # protobuf_module_test and ulid_test hang under ctest (gh-11728); the
-      # gh_8613 tests never ran under ctest here; test-run runs rope_stress
-      # only with --long.
-      - name: Run tests with ctest
-        if: matrix.order == 'ctest first'
+      # protobuf_module_test, ulid_test and uri_test hang under ctest
+      # (gh-11728); the gh_8613 tests never ran under ctest here; test-run
+      # runs rope_stress only with --long.
+      - name: 'ctest: unit/'
+        if: ${{ !cancelled() && matrix.order == 'ctest first' }}
         run: |
           ctest                                       \
             --no-tests=error                          \
             --output-on-failure                       \
             --timeout 120                             \
             -j $((2 * $(sysctl -n hw.logicalcpu)))    \
-            -L 'tarantool-unit|app-luatest'           \
-            -E 'http_client_test|http_client_http_version|protobuf_module_test|ulid_test|gh_8613|rope_stress'
+            -L tarantool-unit                         \
+            -E 'rope_stress'
 
-      - name: Run tests with test-run
+      - name: 'test-run: unit/'
         if: ${{ !cancelled() }}
         run: |
           ./test/test-run.py --force                  \
-            --exclude http_client_test                \
-            --exclude http_client_http_version        \
-            --exclude protobuf_module_test            \
-            --exclude ulid_test                       \
-            --exclude gh_8613                         \
-            unit/ app-luatest/
+            unit/
 
-      - name: Run tests with ctest
+      - name: 'ctest: unit/'
         if: ${{ !cancelled() && matrix.order == 'test-run first' }}
         run: |
           ctest                                       \
@@ -86,8 +81,42 @@ jobs:
             --output-on-failure                       \
             --timeout 120                             \
             -j $((2 * $(sysctl -n hw.logicalcpu)))    \
-            -L 'tarantool-unit|app-luatest'           \
-            -E 'http_client_test|http_client_http_version|protobuf_module_test|ulid_test|gh_8613|rope_stress'
+            -L tarantool-unit                         \
+            -E 'rope_stress'
+
+      - name: 'ctest: app-luatest/'
+        if: ${{ !cancelled() && matrix.order == 'ctest first' }}
+        run: |
+          ctest                                       \
+            --no-tests=error                          \
+            --output-on-failure                       \
+            --timeout 120                             \
+            -j $((2 * $(sysctl -n hw.logicalcpu)))    \
+            -L app-luatest                            \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|ulid_test|uri_test|gh_8613'
+
+      - name: 'test-run: app-luatest/'
+        if: ${{ !cancelled() }}
+        run: |
+          ./test/test-run.py --force                  \
+            --exclude http_client_test                \
+            --exclude http_client_http_version        \
+            --exclude protobuf_module_test            \
+            --exclude ulid_test                       \
+            --exclude uri_test                        \
+            --exclude gh_8613                         \
+            app-luatest/
+
+      - name: 'ctest: app-luatest/'
+        if: ${{ !cancelled() && matrix.order == 'test-run first' }}
+        run: |
+          ctest                                       \
+            --no-tests=error                          \
+            --output-on-failure                       \
+            --timeout 120                             \
+            -j $((2 * $(sysctl -n hw.logicalcpu)))    \
+            -L app-luatest                            \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|ulid_test|uri_test|gh_8613'
 
       - name: Upload failed test artifacts
         if: failure()
