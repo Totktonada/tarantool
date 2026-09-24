@@ -14,6 +14,12 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name != github.repository
 
+    # DO NOT MERGE: several runs of the same job show the noise in timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5]
+
     # ubuntu-latest will be 26.04 soon. Switch ahead of time.
     #
     # https://github.com/actions/runner-images/issues/14748
