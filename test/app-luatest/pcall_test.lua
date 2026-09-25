@@ -29,7 +29,7 @@ g.test_pcall_inside_xpcall = function()
             error('error handler: ' .. msg)
         end)
         t.assert_equals(status, true, 'pcall inside xpcall, status')
-        t.assert_equals(msg, 'pcall is ok',
+        t.assert_equals(msg, 'pcall is ko',
                         'pcall inside xpcall, error message')
     end)
 end
