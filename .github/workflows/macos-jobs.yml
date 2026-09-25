@@ -1,6 +1,7 @@
 name: macos-jobs
 
-on: [push, pull_request]
+# DO NOT MERGE: only the PRs against their FIXUPs run on this push.
+on: workflow_dispatch
 
 jobs:
   macos-jobs:

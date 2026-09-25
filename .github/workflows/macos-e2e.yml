@@ -1,6 +1,7 @@
 name: macos-e2e
 
-on: [push, pull_request]
+# DO NOT MERGE: only the PRs against their FIXUPs run on this push.
+on: workflow_dispatch
 
 jobs:
   macos-e2e:
