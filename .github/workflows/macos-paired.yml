@@ -1,0 +1,99 @@
+name: macos-paired
+
+on: [push, pull_request]
+
+jobs:
+  macos-paired:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: the PR's build and tests and the FIXUP's, in one job --
+    # one machine -- and which goes first alternates between jobs.
+    strategy:
+      fail-fast: false
+      matrix:
+        order: ['PR first', 'FIXUP first']
+        run: [1, 2, 3, 4, 5, 6]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 40
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # DO NOT MERGE: the PR's steps as its macos.yml has them (with the
+      # ulid_test exclusion), but built in ~/build-pr instead of the tree, so
+      # that both builds fit one job; the FIXUP's steps as its macos.yml has
+      # them.
+      - name: 'PR: build'
+        if: ${{ !cancelled() && matrix.order == 'PR first' }}
+        run: |
+          cmake -S . -B ~/build-pr -G Ninja -DCMAKE_BUILD_TYPE=Debug  \
+            -DTEST_BUILD=ON
+          cmake --build ~/build-pr --target tarantool app-luatest-deps
+
+      - name: 'PR: tests'
+        if: ${{ !cancelled() && matrix.order == 'PR first' }}
+        run: |
+          ctest                            \
+            --test-dir ~/build-pr          \
+            --no-tests=error               \
+            --output-on-failure            \
+            --timeout 120                  \
+            -j $(sysctl -n hw.logicalcpu)  \
+            -L app-luatest                 \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|gh_8613|ulid_test'
+
+      - name: 'FIXUP: dependencies'
+        if: ${{ !cancelled() }}
+        run: |
+          python3 -m venv ~/venv
+          ~/venv/bin/pip install gevent pyyaml
+          echo ~/venv/bin >> "$GITHUB_PATH"
+
+      - name: 'FIXUP: build'
+        if: ${{ !cancelled() }}
+        run: |
+          cmake -S . -B ~/build -G Ninja -DCMAKE_BUILD_TYPE=Debug  \
+            -DTEST_BUILD=ON
+          cmake --build ~/build
+
+      - name: 'FIXUP: tests'
+        if: ${{ !cancelled() }}
+        run: |
+          ./test/test-run.py --force --retries 3 --builddir ~/build        \
+            --exclude http_client_test --exclude http_client_http_version  \
+            app-luatest/ unit/
+
+      - name: 'PR: build'
+        if: ${{ !cancelled() && matrix.order == 'FIXUP first' }}
+        run: |
+          cmake -S . -B ~/build-pr -G Ninja -DCMAKE_BUILD_TYPE=Debug  \
+            -DTEST_BUILD=ON
+          cmake --build ~/build-pr --target tarantool app-luatest-deps
+
+      - name: 'PR: tests'
+        if: ${{ !cancelled() && matrix.order == 'FIXUP first' }}
+        run: |
+          ctest                            \
+            --test-dir ~/build-pr          \
+            --no-tests=error               \
+            --output-on-failure            \
+            --timeout 120                  \
+            -j $(sysctl -n hw.logicalcpu)  \
+            -L app-luatest                 \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|gh_8613|ulid_test'
