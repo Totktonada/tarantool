@@ -1,0 +1,72 @@
+name: macos-fixup
+
+on: [push, pull_request]
+
+jobs:
+  macos-fixup:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: many runs of the same job, so that the PR's job and its
+    # FIXUP meet on the same kinds of runner.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 15
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # test-run.py needs gevent and PyYAML. Homebrew's Python is externally
+      # managed (PEP 668) and Homebrew has no gevent, so PyPI's wheels go into
+      # a venv.
+      - name: Install dependencies
+        run: |
+          python3 -m venv ~/venv
+          ~/venv/bin/pip install gevent pyyaml
+          echo ~/venv/bin >> "$GITHUB_PATH"
+
+      # Build everything. It is about as fast as the targets the tests need
+      # (tarantool, tarantool-unit-deps, app-luatest-deps) and 14 s slower
+      # than tarantool with app-luatest-deps alone: 149 s against 135 s.
+      - name: Build
+        run: |
+          cmake -S . -B ~/build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DTEST_BUILD=ON
+          cmake --build ~/build
+
+      # http_client_test.lua hangs in test_http_client_content_length_invalid.
+      #
+      # http_client_http_version_test.lua is known to be unstable on macOS
+      # (gh-12587).
+      - name: Run tests
+        run: |
+          ./test/test-run.py --force --retries 3 --builddir ~/build \
+            --exclude http_client_test --exclude http_client_http_version \
+            app-luatest/ unit/
+
+      - name: Upload failed test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          # DO NOT MERGE: an artifact name is unique within a workflow run.
+          name: macos-fixup-${{ matrix.run }}
+          retention-days: 21
+          path: /tmp/t/artifacts

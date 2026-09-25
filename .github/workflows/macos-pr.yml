@@ -1,0 +1,74 @@
+name: macos-pr
+
+on: [push, pull_request]
+
+jobs:
+  macos-pr:
+    # Run on a branch push and on a pull request from a fork. A pull request
+    # from a branch of this repository is tested by the push of that branch.
+    if: github.event_name == 'push' ||
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name != github.repository
+
+    # DO NOT MERGE: many runs of the same job, so that the PR's job and its
+    # FIXUP meet on the same kinds of runner.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+    runs-on: macos-latest
+
+    timeout-minutes: 15
+
+    steps:
+      # Speeds up actions/checkout.
+      #
+      # https://github.com/actions/checkout/issues/945
+      - name: Parallelize submodules fetching
+        run: git config --global submodule.fetchJobs 8
+
+      - uses: actions/checkout@v7
+        with:
+          # The version of the build is `git describe` of the tree.
+          fetch-depth: 0
+          submodules: recursive
+
+      # Build only the tarantool executable and the files in test/app-luatest to
+      # reduce the build time.
+      - name: Build
+        run: |
+          cmake . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTEST_BUILD=ON
+          cmake --build . --target tarantool app-luatest-deps
+
+      # Use ctest (and not the usual test-run.py harness) to reduce the list of
+      # dependencies (in particular, test-run.py needs gevent).
+      #
+      # http_client_test needs a gevent based http server.
+      #
+      # http_client_http_version_test.lua is known to be unstable on macOS
+      # (gh-12587).
+      #
+      # protobuf_module_test is known to be unstable under ctest (gh-11728).
+      #
+      # gh_8613_centralized_config_options_test.lua and
+      # gh_8613_new_cli_behaviour_test.lua are likely the same; re-test after
+      # gh-11728.
+      - name: Run app-luatest
+        run: |
+          ctest                           \
+            --no-tests=error              \
+            --output-on-failure           \
+            --timeout 120                 \
+            -j $(sysctl -n hw.logicalcpu) \
+            -L app-luatest                \
+            -E 'http_client_test|http_client_http_version|protobuf_module_test|gh_8613'
+
+      - name: Upload failed test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          # DO NOT MERGE: an artifact name is unique within a workflow run.
+          name: macos-pr-${{ matrix.run }}
+          retention-days: 21
+          path: /tmp/t/artifacts
