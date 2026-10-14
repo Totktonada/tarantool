@@ -54,6 +54,7 @@
 #include "lua/fiber_channel.h"
 #include "lua/errno.h"
 #include "lua/socket.h"
+#include "lua/iostream.h"
 #include "lua/utils.h"
 #include "lua/serializer.h"
 #include <lua-cjson/lua_cjson.h>
@@ -886,6 +887,7 @@ tarantool_lua_init_minimal_impl(lua_State *L)
 	tarantool_lua_error_init(L);
 	tarantool_lua_fio_init(L);
 	tarantool_lua_socket_init(L);
+	tarantool_lua_iostream_init(L);
 	tarantool_lua_uri_init(L);
 	tarantool_lua_digest_init(L);
 	tarantool_lua_decimal_init(L);

@@ -199,6 +199,7 @@ set (server_sources
      lua/tnt_datetime.c
      lua/error.c
      lua/socket.c
+     lua/iostream.c
      lua/pickle.c
      lua/minifio.c
      lua/fio.c
