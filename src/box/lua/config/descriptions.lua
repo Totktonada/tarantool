@@ -2221,6 +2221,20 @@ I['metrics.labels.*'] = 'Label value.'
 
 I['metrics.export'] = 'Export of the metrics to monitoring systems.'
 
+I['metrics.export.graphite'] = 'Graphite servers to send the metrics to.'
+
+I['metrics.export.graphite.*'] = 'A Graphite server.'
+
+I['metrics.export.graphite.*.host'] = 'Default: `127.0.0.1`.'
+
+I['metrics.export.graphite.*.port'] = 'A UDP port. Default: 2003.'
+
+I['metrics.export.graphite.*.prefix'] =
+    'A prefix of the metric names. Default: `tarantool`.'
+
+I['metrics.export.graphite.*.send_interval'] =
+    'How often to send the metrics, in seconds. Default: 2.'
+
 I['metrics.export.http'] = 'HTTP servers that serve the metrics.'
 
 I['metrics.export.http.*'] = format_text([[

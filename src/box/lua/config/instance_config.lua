@@ -1921,6 +1921,18 @@ return schema.new('instance_config', schema.record({
                     validate = validators['metrics.export.http.*'],
                 }),
             }),
+            graphite = schema.array({
+                items = schema.record({
+                    prefix = schema.scalar({type = 'string'}),
+                    host = schema.scalar({type = 'string'}),
+                    port = schema.scalar({type = 'integer'}),
+                    send_interval = schema.scalar({
+                        type = 'number',
+                        validate = validators[
+                            'metrics.export.graphite.*.send_interval'],
+                    }),
+                }),
+            }),
         }),
     }),
     sharding = vshard_since('0.1.25', schema.record({

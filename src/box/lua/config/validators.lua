@@ -356,6 +356,12 @@ end
 
 M['metrics.exclude'] = M['metrics.include']
 
+M['metrics.export.graphite.*.send_interval'] = function(data, w)
+    if data <= 0 then
+        w.error('The value must be positive, got %s', data)
+    end
+end
+
 M['metrics.export.http.*'] = function(data, w)
     if data.listen == nil then
         w.error('The listen field must be defined')

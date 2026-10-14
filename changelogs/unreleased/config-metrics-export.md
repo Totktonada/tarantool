@@ -3,3 +3,5 @@
 * Added the `metrics.export.http` configuration section: HTTP and HTTPS
   servers that serve the metrics in the Prometheus or JSON format, with no
   module or role to install.
+* Added the `metrics.export.graphite` configuration section to send the
+  metrics to Graphite servers.

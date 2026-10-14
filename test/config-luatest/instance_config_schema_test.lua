@@ -1794,6 +1794,14 @@ g.test_metrics = function()
                         },
                     },
                 },
+                graphite = {
+                    {
+                        prefix = 'tarantool',
+                        host = 'localhost',
+                        port = 2003,
+                        send_interval = 10,
+                    },
+                },
             },
         }
     }
@@ -1828,6 +1836,14 @@ g.test_metrics_export_errors = function()
          "'params' field, not as the part of URI")
     test({listen = {{uri = '8081'}}, endpoints = {{format = 'json'}}},
          '.endpoints[1]: The path and format fields must be defined')
+
+    t.assert_error_msg_equals('[instance_config] ' ..
+                              'metrics.export.graphite[1].send_interval: ' ..
+                              'The value must be positive, got 0', function()
+        instance_config:validate({
+            metrics = {export = {graphite = {{send_interval = 0}}}},
+        })
+    end)
 end
 
 g.test_sharding = function()

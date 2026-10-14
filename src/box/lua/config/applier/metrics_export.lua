@@ -22,6 +22,8 @@ local formats = {
 
 -- Listening sockets of the HTTP servers.
 local listeners = {}
+-- The graphite configuration in effect.
+local graphite_applied = {}
 
 local function normalize_path(path)
     return '/' .. path:strip('/')
@@ -103,6 +105,18 @@ local function apply(config)
                 listen(endpoints, uri)
             end
         end
+    end
+
+    local graphite = config._configdata:get('metrics.export.graphite',
+                                            {use_default = true}) or {}
+    -- The plugin stops all its senders at once, an application's too.
+    if not table.equals(graphite, graphite_applied) then
+        local plugin = require('metrics.plugins.graphite')
+        plugin.stop()
+        for _, cfg in ipairs(graphite) do
+            plugin.init(cfg)
+        end
+        graphite_applied = graphite
     end
 end
 

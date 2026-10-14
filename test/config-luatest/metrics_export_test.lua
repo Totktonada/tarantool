@@ -1,3 +1,4 @@
+local fiber = require('fiber')
 local fio = require('fio')
 local http_client = require('http.client')
 local json = require('json')
@@ -196,4 +197,47 @@ g.test_unix_socket = function()
     local res = s:read(1024 * 1024, 5)
     s:close()
     t.assert_str_matches(res, 'HTTP/1.1 200 \r\n.*some_counter.*')
+end
+
+g.test_graphite = function()
+    local receiver = socket('AF_INET', 'SOCK_DGRAM', 'udp')
+    t.assert(receiver:bind('127.0.0.1', 0))
+    local port = receiver:name().port
+    local function graphite_config(prefix)
+        return config({
+            include = {'some_counter'},
+            export = {graphite = {{
+                prefix = prefix,
+                host = '127.0.0.1',
+                port = port,
+                send_interval = 0.1,
+            }}},
+        })
+    end
+    -- Skips what is sent with another prefix.
+    local function receive(prefix)
+        local deadline = fiber.clock() + 5
+        while fiber.clock() < deadline do
+            if receiver:readable(0.5) then
+                local data = receiver:recv()
+                if data:startswith(prefix .. '.') then
+                    return data
+                end
+            end
+        end
+    end
+
+    -- The prefix of the plugin by default.
+    local c = start(graphite_config(nil))
+    t.assert_str_matches(receive('tarantool'),
+                         'tarantool%.some_counter;.* 1 %d+.*\n')
+    c:reload(graphite_config('two'))
+    t.assert_str_matches(receive('two'), 'two%.some_counter;.* 1 %d+.*\n')
+
+    c:reload(config({include = {'some_counter'}}))
+    while receiver:readable(0.5) do
+        receiver:recv()
+    end
+    t.assert_not(receiver:readable(1))
+    receiver:close()
 end
