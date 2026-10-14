@@ -24,6 +24,7 @@ local function validate_uuid_str(data, w)
 end
 
 -- Verify 'uri' field in iproto.listen and iproto.advertise.* options.
+-- Returns the parsed URI.
 local function validate_uri_field(has_login_field, used_to_connect)
     return function(data, w)
         -- Substitute variables with placeholders to don't confuse
@@ -53,6 +54,7 @@ local function validate_uri_field(has_login_field, used_to_connect)
                 w.error("bad URI %q: %s", data, err)
             end
         end
+        return uri
     end
 end
 
@@ -353,6 +355,31 @@ M['metrics.include'] = function(data, w)
 end
 
 M['metrics.exclude'] = M['metrics.include']
+
+M['metrics.export.http.*'] = function(data, w)
+    if data.listen == nil then
+        w.error('The listen field must be defined')
+    end
+end
+
+M['metrics.export.http.*.listen.*'] = function(data, w)
+    if data.uri == nil then
+        w.error('The URI is required')
+    end
+end
+
+M['metrics.export.http.*.listen.*.uri'] = function(data, w)
+    -- Without a port, socket.tcp_server() would pick a random one.
+    if M['iproto.listen.*.uri'](data, w).service == nil then
+        w.error('The URI must include a port: %q', data)
+    end
+end
+
+M['metrics.export.http.*.endpoints.*'] = function(data, w)
+    if data.path == nil or data.format == nil then
+        w.error('The path and format fields must be defined')
+    end
+end
 
 -- }}} metrics
 

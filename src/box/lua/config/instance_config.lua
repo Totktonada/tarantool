@@ -1866,6 +1866,62 @@ return schema.new('instance_config', schema.record({
             key = schema.scalar({type = 'string'}),
             value = schema.scalar({type = 'string'}),
         }),
+        export = schema.record({
+            http = schema.array({
+                items = schema.record({
+                    listen = schema.array({
+                        items = schema.record({
+                            uri = schema.scalar({
+                                type = 'string',
+                                validate = validators[
+                                    'metrics.export.http.*.listen.*.uri'],
+                            }),
+                            params = schema.record({
+                                transport = schema.enum({
+                                    'plain',
+                                    'ssl',
+                                }),
+                                ssl_key_file = schema.scalar({
+                                    type = 'string',
+                                }),
+                                ssl_cert_file = schema.scalar({
+                                    type = 'string',
+                                }),
+                                ssl_ca_file = schema.scalar({
+                                    type = 'string',
+                                }),
+                                ssl_ciphers = schema.scalar({
+                                    type = 'string',
+                                }),
+                                ssl_password = sensitive(schema.scalar({
+                                    type = 'string',
+                                })),
+                                ssl_password_file = sensitive(schema.scalar({
+                                    type = 'string',
+                                })),
+                            }),
+                        }, {
+                            validate = validators[
+                                'metrics.export.http.*.listen.*'],
+                        }),
+                    }),
+                    endpoints = schema.array({
+                        items = schema.record({
+                            path = schema.scalar({type = 'string'}),
+                            format = schema.enum({'json', 'prometheus'}),
+                            metrics = schema.record({
+                                enabled = schema.scalar({type = 'boolean'}),
+                            }),
+                        }, {
+                            validate = validators[
+                                'metrics.export.http.*.endpoints.*'],
+                        }),
+                    }),
+                }, {
+                    validate = validators['metrics.export.http.*'],
+                }),
+            }),
+        }),
     }),
     sharding = vshard_since('0.1.25', schema.record({
         -- Instance vshard options.

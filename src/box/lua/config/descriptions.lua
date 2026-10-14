@@ -2219,6 +2219,61 @@ I['metrics.labels'] = 'Global labels to be added to every observation.'
 
 I['metrics.labels.*'] = 'Label value.'
 
+I['metrics.export'] = 'Export of the metrics to monitoring systems.'
+
+I['metrics.export.http'] = 'HTTP servers that serve the metrics.'
+
+I['metrics.export.http.*'] = format_text([[
+    An HTTP server. It starts if it has endpoints and restarts on a
+    configuration reload.
+]])
+
+I['metrics.export.http.*.listen'] = 'URIs to listen on, as `iproto.listen`.'
+
+I['metrics.export.http.*.listen.*'] = 'A URI to listen on.'
+
+I['metrics.export.http.*.listen.*.uri'] =
+    'A port, `host:port` or `unix/:<path>`.'
+
+I['metrics.export.http.*.listen.*.params'] = I['<uri>.params']
+
+I['metrics.export.http.*.listen.*.params.transport'] =
+    I['<uri>.params.transport']
+
+I['metrics.export.http.*.listen.*.params.ssl_ca_file'] =
+    I['<uri>.params.ssl_ca_file']
+
+I['metrics.export.http.*.listen.*.params.ssl_cert_file'] =
+    I['<uri>.params.ssl_cert_file']
+
+I['metrics.export.http.*.listen.*.params.ssl_ciphers'] =
+    I['<uri>.params.ssl_ciphers']
+
+I['metrics.export.http.*.listen.*.params.ssl_key_file'] =
+    I['<uri>.params.ssl_key_file']
+
+I['metrics.export.http.*.listen.*.params.ssl_password'] =
+    I['<uri>.params.ssl_password']
+
+I['metrics.export.http.*.listen.*.params.ssl_password_file'] =
+    I['<uri>.params.ssl_password_file']
+
+I['metrics.export.http.*.endpoints'] = 'Paths that serve the metrics.'
+
+I['metrics.export.http.*.endpoints.*'] =
+    'A path and the format of the metrics there.'
+
+I['metrics.export.http.*.endpoints.*.path'] = 'A path, such as `/metrics`.'
+
+I['metrics.export.http.*.endpoints.*.format'] =
+    'The format of the metrics: `prometheus` or `json`.'
+
+I['metrics.export.http.*.endpoints.*.metrics'] =
+    'Metrics of the endpoint itself.'
+
+I['metrics.export.http.*.endpoints.*.metrics.enabled'] =
+    'Observe the request latency in `http_server_request_latency`.'
+
 -- }}} metrics configuration
 
 -- {{{ process configuration

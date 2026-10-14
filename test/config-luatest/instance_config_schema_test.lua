@@ -86,6 +86,24 @@ g.test_sensitive_annotations = function()
                 },
             },
         },
+        metrics = {
+            export = {
+                http = {
+                    {
+                        listen = {{
+                            uri = '8081',
+                            params = {
+                                transport = 'ssl',
+                                ssl_cert_file = 'server.crt',
+                                ssl_key_file = 'server.key',
+                                ssl_password = 'key-secret',
+                                ssl_password_file = 'passwords',
+                            },
+                        }},
+                    },
+                },
+            },
+        },
     }
     instance_config:validate(iconfig)
 
@@ -100,6 +118,8 @@ g.test_sensitive_annotations = function()
         'credentials.users.client.password',
         'iproto.advertise.peer.password',
         'iproto.advertise.sharding.password',
+        'metrics.export.http.1.listen.1.params.ssl_password',
+        'metrics.export.http.1.listen.1.params.ssl_password_file',
     })
 end
 
@@ -1750,11 +1770,64 @@ g.test_metrics = function()
             include = {'network', 'info', 'cpu', 'roles.crud-router'},
             exclude = {'info', 'roles.crud-storage.custom_metric'},
             labels = {foo = 'bar'},
+            export = {
+                http = {
+                    {
+                        listen = {{
+                            uri = 'localhost:8081',
+                            params = {
+                                transport = 'ssl',
+                                ssl_cert_file = 'server.crt',
+                                ssl_key_file = 'server.key',
+                                ssl_ca_file = 'ca.crt',
+                                ssl_ciphers = 'ECDHE-RSA-AES256-GCM-SHA384',
+                                ssl_password = 'secret',
+                                ssl_password_file = 'passwords',
+                            },
+                        }},
+                        endpoints = {
+                            {
+                                path = '/metrics',
+                                format = 'prometheus',
+                                metrics = {enabled = true},
+                            },
+                        },
+                    },
+                },
+            },
         }
     }
 
     instance_config:validate(iconfig)
     validate_fields(iconfig.metrics, instance_config.schema.fields.metrics)
+
+    -- A port, a Unix socket and a template are addresses too.
+    local listen = iconfig.metrics.export.http[1].listen[1]
+    for _, uri in ipairs({'8081', 'unix/:/tmp/metrics.sock',
+                          'unix/:./{{ instance_name }}.sock'}) do
+        listen.uri = uri
+        instance_config:validate(iconfig)
+    end
+end
+
+g.test_metrics_export_errors = function()
+    local function test(server, err)
+        t.assert_error_msg_equals('[instance_config] ' ..
+                                  'metrics.export.http[1]' .. err, function()
+            instance_config:validate({
+                metrics = {export = {http = {server}}},
+            })
+        end)
+    end
+    test({}, ': The listen field must be defined')
+    test({listen = {{}}}, '.listen[1]: The URI is required')
+    test({listen = {{uri = 'localhost'}}},
+         '.listen[1].uri: The URI must include a port: "localhost"')
+    test({listen = {{uri = 'localhost:8081?transport=ssl'}}},
+         ".listen[1].uri: URI parameters should be described in the " ..
+         "'params' field, not as the part of URI")
+    test({listen = {{uri = '8081'}}, endpoints = {{format = 'json'}}},
+         '.endpoints[1]: The path and format fields must be defined')
 end
 
 g.test_sharding = function()
